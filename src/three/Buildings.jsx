@@ -1,111 +1,120 @@
 // src/three/Buildings.jsx
 //
-// Affiche tous les bâtiments comme des extrusions 3D posées sur le terrain.
+// Extrude les bâtiments (MultiPolygon) en 3D, répartis en DEUX niveaux selon
+// la surface du fokotany (zone survolée) :
+//   - Bâtiment DANS le fokotany (centroïde dans la surface) -> EN HAUT,
+//     posé sur le relief survolé (base = hauteur relief + survol).
+//   - Bâtiment HORS   du fokotany                        -> EN BAS,
+//     posé sur le socle plat du bas (base = baseZ).
+// Chaque bâtiment est assigné EN ENTIER à son niveau, donc aucun ne flotte
+// au milieu de l'espace vide entre le haut et le bas.
 //
-// - Geometry réelle : footprints polygonaux des GPKG (reprojetés et passés
-//   en repère local par le preprocessing).
-// - Chaque bâtiment est extrudé de sa hauteur (attributs ou hauteur par
-//   défaut documentée) au-dessus de l'altitude du terrain échantillonnée
-//   au centroïde du footprint.
-// - Tous les bâtiments sont fusionnés en UNE BufferGeometry (performance) ;
-//   la correspondance face -> buildingId est conservée pour la sélection
-//   au clic.
-// - Sélection : un mesh de surbrillance (avec la géométrie complète du
-//   bâtiment sélectionné) est rendu par-dessus.
+// Rendu QGIS : "Walls|Roof" uniquement (pas de face inférieure) + centroïde
+// pour l'altitude (alt-binding=centroid).
 
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createTerrainSampler } from '../utils/loadData';
 import { COLORS } from './colors';
 
-export default function Buildings({ buildingsData, terrain, onSelect, selectedId }) {
-  const meshRef = useRef();
-
-  // Construction de la géométrie fusionnée de tous les bâtiments.
-  // Chaque bâtiment est posé sur le terrain : sa base est à l'altitude du
-  // relief échantillonnée au centroïde du footprint.
+export default function Buildings({
+  buildingsData,
+  terrain,
+  fokotany,
+  baseZ,
+  survol = 0,
+  onSelect,
+  selectedId,
+}) {
   const built = useMemo(() => {
     if (!buildingsData || !buildingsData.buildings || !terrain) return null;
-
     const sampler = createTerrainSampler(terrain);
-    const geoms = [];
-    const faceToBuilding = [];
-    const buildingGeoms = {}; // [bid] -> liste de géometries (pour highlight)
-    const heightRange = { min: Infinity, max: -Infinity };
+
+    // Deux groupes : 'high' (dans le fokotany -> en haut) et 'low' (hors -> en bas)
+    const groups = {
+      high: { geoms: [], faceToBuilding: [], buildingGeoms: {}, ids: new Set() },
+      low: { geoms: [], faceToBuilding: [], buildingGeoms: {}, ids: new Set() },
+    };
 
     buildingsData.buildings.forEach((b, bi) => {
-      const cx = b.centroid[0];
-      const cy = b.centroid[1];
-      const baseZ = sampler.sample(cx, cy);
-      const altitude = Number.isFinite(baseZ) ? baseZ : (terrain.z[0] ?? 0);
       const height = b.height > 0 ? b.height : buildingsData.defaultHeight;
+      const inside = fokotany ? fokotany.isInside(b.centroid[0], b.centroid[1]) : false;
+      const g = inside ? groups.high : groups.low;
 
-      const bGeoms = [];
-
-      for (const ring of b.rings) {
-        const solids = extrudeBuilding(ring, altitude, height);
-
-        for (const solid of solids) {
-          bGeoms.push(solid);
-          geoms.push(solid);
-
-          const triCount = solid.index ? solid.index.count : solid.attributes.position.count / 3;
-          for (let f = 0; f < triCount; f++) faceToBuilding.push(bi);
-        }
+      // Base de pose du bâtiment
+      let baseZ0;
+      if (inside) {
+        const elev = sampler.sample(b.centroid[0], b.centroid[1]);
+        baseZ0 = (elev === null || Number.isNaN(elev) ? baseZ : elev) + survol;
+      } else {
+        baseZ0 = baseZ;
       }
 
-      heightRange.min = Math.min(heightRange.min, altitude);
-      heightRange.max = Math.max(heightRange.max, altitude + height);
-      buildingGeoms[bi] = bGeoms;
+      const bGeoms = [];
+      for (const ring of b.rings) {
+        const solids = extrudeBuilding(ring, baseZ0, height);
+        for (const solid of solids) {
+          g.geoms.push(solid);
+          bGeoms.push(solid);
+          const triCount = solid.index
+            ? solid.index.count
+            : solid.attributes.position.count / 3;
+          for (let f = 0; f < triCount; f++) g.faceToBuilding.push(bi);
+        }
+      }
+      g.buildingGeoms[bi] = bGeoms;
+      g.ids.add(bi);
     });
 
-    let merged = null;
-    try {
-      merged = mergeGeometries(geoms, false);
-    } catch (e) {
-      console.error('Erreur fusion bâtiments', e);
+    const result = { groups: {} };
+    for (const key of ['high', 'low']) {
+      const g = groups[key];
+      let merged = null;
+      try {
+        merged = mergeGeometries(g.geoms, false);
+      } catch (e) {
+        console.error('Erreur fusion bâtiments', key, e);
+      }
+      if (merged) merged.computeVertexNormals();
+      result.groups[key] = {
+        geometry: merged,
+        faceToBuilding: g.faceToBuilding,
+        buildingGeoms: g.buildingGeoms,
+        ids: g.ids,
+      };
     }
-    if (merged) merged.computeVertexNormals();
+    return result;
+  }, [buildingsData, terrain, fokotany, baseZ, survol]);
 
-    return { geometry: merged, faceToBuilding, buildingGeoms, heightRange };
-  }, [buildingsData, terrain]);
-
-  // Surbrillance : géométrie du bâtiment sélectionné
-  const highlightGeometry = useMemo(() => {
-    if (!built || selectedId == null) return null;
-    const geoms = built.buildingGeoms[selectedId];
-    if (!geoms) return null;
-    try {
-      const g = mergeGeometries(geoms, false);
-      g.computeVertexNormals();
-      return g;
-    } catch (e) {
-      console.warn('Erreur highlight', e);
-      return null;
-    }
-  }, [built, selectedId]);
-
-  const handleClick = (event) => {
-    if (!built || !built.geometry) return;
-    const face = event.faceIndex;
-    if (face === undefined) return;
-    const bid = built.faceToBuilding[face];
+  const handleClick = (groupKey) => (event) => {
+    if (!built || event.faceIndex === undefined) return;
+    const g = built.groups[groupKey];
+    if (!g || !g.geometry) return;
+    const bid = g.faceToBuilding[event.faceIndex];
     if (bid === undefined) return;
     if (onSelect) onSelect(bid);
   };
 
-  if (!built || !built.geometry) return null;
+  if (!built) return null;
 
   return (
     <group>
-      <mesh
-        ref={meshRef}
-        geometry={built.geometry}
-        onClick={handleClick}
-        castShadow
-        receiveShadow
-      >
+      {renderGroup(built.groups.high, 'high', handleClick('high'), selectedId)}
+      {renderGroup(built.groups.low, 'low', handleClick('low'), selectedId)}
+    </group>
+  );
+}
+
+function renderGroup(group, key, onClick, selectedId) {
+  if (!group || !group.geometry) return null;
+  return selectedHighlight(group, key, onClick, selectedId);
+}
+
+function selectedHighlight(group, key, onClick, selectedId) {
+  return (
+    <group key={`grp-${key}`}>
+      <mesh geometry={group.geometry} onClick={onClick} castShadow receiveShadow>
         <meshStandardMaterial
           color={COLORS.building}
           roughness={0.7}
@@ -113,37 +122,29 @@ export default function Buildings({ buildingsData, terrain, onSelect, selectedId
           flatShading
         />
       </mesh>
-
-      {highlightGeometry && (
-        <mesh geometry={highlightGeometry} castShadow>
-          <meshBasicMaterial color={COLORS.buildingSelected} />
-        </mesh>
-      )}
+      {selectedId != null && group.buildingGeoms[selectedId]
+        ? (() => {
+            const g = mergeGeometries(group.buildingGeoms[selectedId], false);
+            g.computeVertexNormals();
+            return (
+              <mesh geometry={g} castShadow>
+                <meshBasicMaterial color={COLORS.buildingSelected} />
+              </mesh>
+            );
+          })()
+        : null}
     </group>
   );
 }
 
-// Extrude un anneau en géométries BufferGeometry (dimension 3D).
-// Retourne un tableau de BufferGeometry, toutes avec les attributs
-// position + normal + uv + index pour être compatibles à la fusion.
-//
-// Fidèle au rendu QGIS 3D de référence (rendered-facade="Walls|Roof") :
-// on ne génère que les MURS et le TOIT, PAS la face inférieure (sol).
-// Le bâtiment est donc "en survol" : sans face de fond connectée au sol.
+// Extrude un anneau en géométries BufferGeometry (3D), murs+toit, sans sol.
 function extrudeBuilding(ring, baseZ, height) {
-  const geometries = [];
-
-  // ----- Toit (dessus, normale vers ... top) -----
   const roof = polygonGeometry(ring, baseZ + height, +1);
-  // ----- Murs -----
   const walls = wallsGeometry(ring, baseZ, baseZ + height);
-
-  geometries.push(walls, roof);
-  return geometries;
+  return [walls, roof];
 }
 
 // Triangule un anneau dans le plan horizontal à l'altitude z.
-// La normale pointe vers le haut (dir=1) ou le bas (dir=-1).
 function polygonGeometry(ring, z, dir) {
   const shape = new THREE.Shape();
   shape.moveTo(ring[0][0], ring[0][1]);
@@ -151,20 +152,15 @@ function polygonGeometry(ring, z, dir) {
   shape.closePath();
 
   const shapeGeo = new THREE.ShapeGeometry(shape);
-  // ShapeGeometry est dans le plan XY; on le translate en Z
   shapeGeo.translate(0, 0, z);
 
   const indices = shapeGeo.getIndex();
-  if (!indices) return shapeGeo;
-
-  if (dir < 0) {
-    // inverser l'ordre des triangles -> normales vers le bas.
-    // indices est un BufferAttribute : on clone son tableau .array.
+  if (indices && dir < 0) {
     const arr = indices.array.slice();
     for (let i = 0; i < arr.length; i += 3) {
       const tmp = arr[i];
       arr[i] = arr[i + 2];
-      arr[i + 2] = tmp; // swap a et c
+      arr[i + 2] = tmp;
     }
     shapeGeo.setIndex(new THREE.BufferAttribute(arr, 1));
     shapeGeo.computeVertexNormals();
@@ -191,15 +187,12 @@ function wallsGeometry(ring, z0, z1) {
     const x1 = a[0], y1 = a[1];
     const x2 = b[0], y2 = b[1];
 
-    // Vecteur de côté et normale (dans le plan, perpendiculaire au mur)
     const dx = x2 - x1;
     const dy = y2 - y1;
     const len = Math.hypot(dx, dy) || 1;
-    // normale horizontale (pointe vers l'extérieur gauche du segment)
     const nx = -dy / len;
     const ny = dx / len;
 
-    // 4 sommets : v0(bas,a) v1(bas,b) v2(haut,a) v3(haut,b)
     const verts = [
       [x1, y1, z0],
       [x2, y2, z0],
@@ -212,20 +205,17 @@ function wallsGeometry(ring, z0, z1) {
       positions[p++] = vz;
     }
 
-    // Normales
     for (let m = 0; m < 4; m++) {
       normals[(vi + m) * 3] = nx;
       normals[(vi + m) * 3 + 1] = ny;
       normals[(vi + m) * 3 + 2] = 0;
     }
 
-    // UV (largeur du mur)
-    uvs[(vi) * 2] = 0; uvs[(vi) * 2 + 1] = 0;
+    uvs[vi * 2] = 0; uvs[vi * 2 + 1] = 0;
     uvs[(vi + 1) * 2] = 1; uvs[(vi + 1) * 2 + 1] = 0;
     uvs[(vi + 2) * 2] = 0; uvs[(vi + 2) * 2 + 1] = 1;
     uvs[(vi + 3) * 2] = 1; uvs[(vi + 3) * 2 + 1] = 1;
 
-    // triangles (v0,v2,v1) et (v1,v2,v3)
     indices[i++] = vi;
     indices[i++] = vi + 2;
     indices[i++] = vi + 1;

@@ -4,8 +4,9 @@
 
 export const COLORS = {
   terrain: '#ffffff',
-  building: '#cfcfcf',
+  basePlane: '#2f3b33',
+  building: '#c9c9c9',
   buildingSelected: '#ffd400',
-  highway: '#8D6169',
+  highway: '#d98a3d',
   waterway: '#4A94D8',
 };

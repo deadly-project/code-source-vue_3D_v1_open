@@ -59,6 +59,29 @@ def to_local(x, y, z=0.0):
     return (x - ORIGIN_X, y - ORIGIN_Y, z * Z_SCALE + ORIGIN_Z)
 
 
+def convex_hull(xs, ys):
+    """Enveloppe convexe (Andrew's monotone chain). Retourne la liste de
+    sommets [x, y] (coordonnées locales) dans le sens antihoraire."""
+    pts = sorted(zip(xs, ys))
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+
+    return [[round(x, 3), round(y, 3)] for x, y in (lower[:-1] + upper[:-1])]
+
+
 def build_terrain(meta):
     """Lit le DEM fokotanyfinale.tif et produit la grille locale."""
     print("=== DEM ===")
@@ -166,11 +189,32 @@ def build_terrain(meta):
     # et stocke les hauteurs dans un tableau PLAT row-major :
     #   z[row * cols + col] avec row = (ly - miny) / sy.
     # On inverse donc les lignes et on aplatit en une liste de longueur rows*cols.
+    #
+    # On impose une valeur basse cohérente (base du relief) à TOUTES les
+    # cellules NoData (masquées par l'alpha), pour que l'échantillonneur du
+    # terrain (qui interpole sans tenir compte de l'alpha) ne produise jamais
+    # d'altitude aberrante (0) au bord du fokotany.
+    arr_clean = arr_clean.astype(float).copy()
+    arr_clean[~orig_valid_mask] = global_mean
     z_values = arr_clean[::-1].ravel().tolist()
 
     # Alpha (validité réelle du relief) : 1 = donnée valide, 0 = NoData.
     # Même orientation que z (row 0 = sud) et tableau plat row-major.
     alpha_values = orig_valid_mask[::-1].ravel().astype(int).tolist()
+
+    # ---- Polygone du fokotany ----
+    # Le "fokotany" est la zone couverte par le relief valide (alpha = 1).
+    # On construit son enveloppe convexe en coordonnées locales, afin que les
+    # lignes (routes/eaux) puissent être réparties : dans le fokotany -> haut,
+    # hors du fokotany -> bas.
+    # Coordonnées locales des cellules valides (row 0 = sud, col 0 = ouest).
+    valid_rows, valid_cols = np.nonzero(orig_valid_mask)
+    if len(valid_rows) > 0:
+        lx_pts = local_west + (valid_cols / max(cols - 1, 1)) * (maxx - minx)
+        ly_pts = local_south + (valid_rows / max(rows - 1, 1)) * (maxy - miny)
+        hull_pts = convex_hull(lx_pts.tolist(), ly_pts.tolist())
+    else:
+        hull_pts = []
 
     out = {
         "type": "terrain",
@@ -189,6 +233,7 @@ def build_terrain(meta):
         "maxElevation": float(stats[1]),
         "z": z_values,
         "alpha": alpha_values,
+        "fokotany": hull_pts,
         "textureUrl": "data/terrain.webp",
     }
 

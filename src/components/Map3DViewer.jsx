@@ -9,9 +9,11 @@ import Scene3D from '../three/Scene3D';
 import { COLORS } from '../three/colors';
 
 const LEGEND_ITEMS = [
+  { label: 'Fokotany (relief, survol)', color: COLORS.terrain, hint: 'Couche montée en haut' },
+  { label: 'Socle du bas', color: COLORS.basePlane, hint: 'Lignes restées en bas' },
   { label: 'Bâtiments', color: COLORS.building, hint: 'Cliquer pour les détails' },
-  { label: 'Routes (highway)', color: COLORS.highway, hint: 'Réseau routier' },
-  { label: 'Cours d\u2019eau', color: COLORS.waterway, hint: 'Canaux, drains' },
+  { label: 'Routes (highway)', color: COLORS.highway, hint: 'Tronçons haut + bas' },
+  { label: 'Cours d\u2019eau', color: COLORS.waterway, hint: 'Tronçons haut + bas' },
 ];
 
 export default function Map3DViewer() {

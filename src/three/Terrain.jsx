@@ -20,7 +20,7 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useTexture } from '@react-three/drei';
 
-export default function Terrain({ data }) {
+export default function Terrain({ data, offsetZ = 0 }) {
   const texture = useTexture(data.textureUrl);
 
   const geometry = useMemo(() => {
@@ -34,7 +34,7 @@ export default function Terrain({ data }) {
       const y = data.miny + (row / (h - 1)) * data.height;
       for (let col = 0; col < w; col++) {
         const x = data.minx + (col / (w - 1)) * data.width;
-        const z = data.z[row * w + col] ?? 0;
+        const z = (data.z[row * w + col] ?? 0) + offsetZ;
         positions[p++] = x;
         positions[p++] = y;
         positions[p++] = z;
@@ -68,7 +68,7 @@ export default function Terrain({ data }) {
     geo.computeBoundingBox();
     geo.computeBoundingSphere();
     return { geometry: geo, alphaTex };
-  }, [data]);
+  }, [data, offsetZ]);
 
   return (
     <mesh geometry={geometry.geometry} castShadow receiveShadow>

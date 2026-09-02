@@ -103,3 +103,36 @@ export function createTerrainSampler(terrain) {
 
   return { sample, getAt, gridWidth: w, gridHeight: h };
 }
+
+// ---------------------------------------------------------------------------
+// Test d'appartenance au fokotany (zone du relief valide)
+// ---------------------------------------------------------------------------
+// Le "fokotany" est la zone couverte par les cellules valides du MNT
+// (alpha = 1). On renvoie true si la cellule la plus proche du point (lx, ly)
+// est valide, ce qui reproduit fidèlement la forme réelle du relief.
+export function createFokotanyTester(terrain) {
+  const {
+    gridWidth: w,
+    gridHeight: h,
+    minx,
+    miny,
+    width,
+    height,
+    alpha,
+  } = terrain;
+
+  const sx = w > 1 ? width / (w - 1) : 0;
+  const sy = h > 1 ? height / (h - 1) : 0;
+
+  function isInside(lx, ly) {
+    if (sx === 0 || sy === 0 || !alpha) return false;
+    const cx = (lx - minx) / sx;
+    const cy = (ly - miny) / sy;
+    if (cx < 0 || cy < 0 || cx > w - 1 || cy > h - 1) return false;
+    const col = Math.round(cx);
+    const row = Math.round(cy);
+    return alpha[row * w + col] === 1;
+  }
+
+  return { isInside };
+}
