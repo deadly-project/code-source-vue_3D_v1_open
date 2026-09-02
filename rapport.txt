@@ -75,29 +75,38 @@ Rendu des bâtiments (conforme au QGIS 3D) :
 ---------------------------------------------------------------------
 Repère : Z-up (X=est, Y=nord, Z=altitude). Vue 3D unique.
 
-Constante de survol : SURVOL = 20 m  (taille de l'espace vide entre
-les deux étages ; ajustable dans src/three/Scene3D.jsx).
+Suvol DYNAMIQUE : ajusté depuis l'interface (input numérique dans
+Map3DViewer.jsx, de 0 m -> infini). Valeur par défaut : 40 m.
+Le survol est transmis comme prop `survol` à Scene3D -> Terrain,
+Buildings et NetworkLines, et utilisé par le cadrage caméra.
+Taille de l'espace vide entre les deux étages.
 
 Niveau BAS :
-   - BasePlane : surface plane (socle) à l'altitude baseZ =
-     minElevation du MNT (1249 m).
-   - Les 3009 bâtiments HORS de la surface du fokotany, posés sur le
-     socle (baseZ).
+   - Les 3009 bâtiments HORS de la surface du fokotany, posés à
+     l'altitude de base du bas (baseZ = minElevation du MNT, 1249 m).
    - Les tronçons de routes/eaux HORS de la surface du fokotany.
+   - Remarque : le socle plat noir (BasePlane) a été RETIRÉ à la
+     demande de l'utilisateur ; les éléments du bas reposent
+     directement à baseZ sans surface noire.
 
 Niveau HAUT :
    - Le fokotany (le MNT, couche Raster "fokotanyfinale") affiché
-     SURVOLÉ (élevé de +20 m) : Terrain offsetZ=20.
+     SURVOLÉ (élevé de +survol m) : Terrain offsetZ=survol.
    - Les 456 bâtiments DANS la surface du fokotany, posés sur le
-     relief survolé (base = relief + 20).
+     relief survolé (base = relief + survol).
    - Les tronçons de routes/eaux DANS la surface du fokotany, posés
      sur le relief survolé.
 
 ESPACE VIDE :
-   - Entre le fokotany en haut et le socle/éléments du bas, il n'y a
+   - Entre le fokotany en haut et les éléments du bas, il n'y a
      RIEN : aucun bâtiment ne traverse, aucune liaison. Chaque
      bâtiment est assigné EN ENTIER (haut ou bas) via son centroïde,
      ce qui garantit qu'aucun ne flotte au milieu du vide.
+
+Bâtiment sélectionné :
+   - Le bâtiment cliqué est affiché EN SURBRILLANCE en jaune
+     (COLORS.buildingSelected = #ffd400) par-dessus sa géométrie, pour
+     l'identifier distinctement de la couleur grise par défaut.
 
 Identification de la surface du fokotany (JS) :
    - createFokotanyTester(terrain) dans src/utils/loadData.js :
@@ -110,22 +119,27 @@ Identification de la surface du fokotany (JS) :
 ---------------------------------------------------------------------
  4. FICHIERS MODIFIES / CREES DANS LE PROJET REACT
 ---------------------------------------------------------------------
-   /src/three/Scene3D.jsx         - assemblage scène (socle + fokotany
-                                    survolé + répartition haut/bas,
-                                    SURVOL=20, cadrage caméra complet)
+   /src/three/Scene3D.jsx         - assemblage scène (fokotany survolé
+                                    + répartition haut/bas, survol
+                                    dynamique via prop, cadrage caméra)
    /src/three/Buildings.jsx       - bâtiments répartis haut/bas par
                                     centroïde (456 haut / 3009 bas),
-                                    Walls|Roof, extrusion 8 m
+                                    Walls|Roof, extrusion 8 m,
+                                    surbrillance jaune du bâtiment choisi
    /src/three/NetworkLines.jsx    - routes/eaux découpées en tronçons
                                     haut/bas selon la surface du fokotany
    /src/three/Terrain.jsx         - relief (fokotany) supporte offsetZ
-                                    (survol) + masque alpha (NoData)
-   /src/three/BasePlane.jsx       - socle plat du bas (nouveau)
-   /src/three/colors.js           - couleurs partagées (basePlane, etc.)
+                                    (survol dynamique) + masque alpha
+                                    (NoData)
+   /src/three/BasePlane.jsx       - socle plat du bas (SUPPRIMÉ : retiré
+                                    à la demande de l'utilisateur)
+   /src/three/colors.js           - couleurs partagées (building,
+                                    buildingSelected, etc.)
    /src/utils/loadData.js         - createTerrainSampler +
                                     createFokotanyTester
-   /src/components/Map3DViewer.jsx- légende (fokotany survolé, socle,
-                                    bâtiments, routes, eaux)
+   /src/components/Map3DViewer.jsx- légende (fokotany survolé, bâtiments,
+                                    routes, eaux) + INPUT de survol
+                                    dynamique (0 m -> infini, défaut 40 m)
    /scripts/preprocess.py         - génère public/data/*.json + polygone
                                     "fokotany" + remplit NoData à
                                     minElevation (évite altitudes aberrantes)
@@ -134,13 +148,16 @@ Identification de la surface du fokotany (JS) :
 ---------------------------------------------------------------------
  5. VALIDATION (tests Node reproduisant le code)
 ---------------------------------------------------------------------
-   - Bâtiments : high=456 (base ~1269..1280.7), low=3009 (base 1249).
-     Toutes les positions sont finies ; aucun bâtiment "coupé".
-   - Routes : segments HAUT sur le relief survolé ; segments BAS sur le
-     socle. Aucun tronçon bas ne monte.
+   - Bâtiments : high=456 (base ~1289..1303 avec survol 40), low=3009
+     (base 1249). Toutes les positions sont finies ; aucun "coupé".
+   - Routes : segments HAUT sur le relief survolé ; segments BAS en
+     bas. Aucun tronçon bas ne monte.
    - Eaux   : segments HAUT / BAS selon la surface du fokotany.
+   - Survole dynamique : input dans l'interface (0 -> infini), prop
+     propagée à la scène (recalcul des positions + cadrage caméra).
+   - Bâtiment sélectionné : surbrillance jaune (#ffd400).
    - npm run build  : OK
-   - npm run lint   : OK
+   - npm run lint   : OK (aucun warning sur les fichiers de la 3D)
 
 
 ---------------------------------------------------------------------
@@ -149,7 +166,9 @@ Identification de la surface du fokotany (JS) :
 La scène React reproduit maintenant la configuration demandée : le
 fokotany (MNT) est élevé en HAUT avec les waterway/highway/building
 qui étaient dans sa surface, tandis que le reste de ces couches reste
-en BAS, avec un espace VIDE (20 m) sans liaison entre les deux étages.
-La surface du fokotany est identifiée finement pour éviter que des
+en BAS, avec un espace VIDE (survol dynamique, défaut 40 m) sans
+liaison entre les deux étages. Le socle noir du bas a été retiré. Le
+bâtiment sélectionné est surligné en jaune pour l'identifier. La
+surface du fokotany est identifiée finement pour éviter que des
 bâtiments ne restent bloqués au milieu du vide.
 =====================================================================

@@ -4,9 +4,9 @@
 //
 // Répartition selon le fokotany (zone survolée), par TRONÇONS :
 //   - tronçon DANS  le fokotany -> posé sur le relief survolé (haut) :
-//       altitude = hauteur du relief + SURVOL.
-//   - tronçon HORS  le fokotany -> posé sur le socle du bas :
-//       altitude = baseZ (surface plate du bas).
+//       altitude = hauteur du relief + survol (dynamique).
+//   - tronçon HORS  le fokotany -> posé en bas :
+//       altitude = baseZ (altitude de base du bas).
 // Une ligne qui traverse le fokotany sera donc découpée : les morceaux dans
 // le fokotany montent, les morceaux hors du fokotany restent en bas (sans
 // jamais monter).

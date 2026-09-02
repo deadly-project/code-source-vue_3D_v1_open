@@ -1,0 +1,315 @@
+==============================================================================
+    RAPPORT TECHNIQUE - SYSTEME D'AUTHENTIFICATION OPENCODE
+    Projet : opencode-test
+    Date   : 02 septembre 2026
+==============================================================================
+
+SOMMAIRE
+--------
+  1. Architecture generale
+  2. Securisation des routes
+  3. Strategie d'isolation des tokens (session multi-utilisateurs)
+  4. Base de donnees et modele utilisateur
+  5. Flux d'authentification
+  6. Structure des fichiers livres
+  7. Demarche de lancement et test local
+  8. Comptes de test par defaut
+
+==============================================================================
+1. ARCHITECTURE GENERALE
+==============================================================================
+
+Le systeme d'authentification est divise en deux tiers :
+
+  FRONTEND (React.js + Vite)          BACKEND (Node.js + Express)
+  src/authentification/                backend/express/
+  ├─ AxiosConfig.js                    ├─ server.js
+  ├─ AuthContext.jsx                   ├─ database.js
+  ├─ AuthPage.jsx                      ├─ routes/auth.js
+  ├─ LoginPage.jsx                     ├─ middleware/auth.js
+  ├─ RegisterPage.jsx                  └─ middleware/roles.js
+  ├─ ProtectedRoute.jsx
+  └─ auth.css
+
+Technologies :
+  - Backend  : Express 4, better-sqlite3, bcryptjs, jsonwebtoken
+  - Frontend : React 19, react-router-dom, axios
+  - Base     : SQLite (fichier local opencode.db)
+
+Le frontend communique avec le backend via une instance Axios configuree
+qui injecte automatiquement le JWT dans chaque requete HTTP.
+
+==============================================================================
+2. SECURISATION DES ROUTES
+==============================================================================
+
+Le backend implemente un systeme de securite en 3 niveaux :
+
+NIVEAU 1 - Validation entree (routes/auth.js)
+  - Verification des champs obligatoires
+  - Validation du format email (regex)
+  - Verification de la longueur minimale du mot de passe (8 caracteres)
+  - Unicite du username et de l'email (constraints BDD)
+
+NIVEAU 2 - Authentification JWT (middleware/auth.js)
+  - Le middleware authenticateToken extrait le token du header Authorization
+  - Verifie la signature avec la cle secrete JWT_SECRET
+  - Detecte les tokens expires et renvoie 401
+  - Detecte les tokens invalides et renvoie 403
+  - Injecte le payload decode (id, role) dans req.user
+
+NIVEAU 3 - Controle d'acces par role (middleware/roles.js)
+  - La fonction requireRole(...roles) verifie que req.user.role
+    fait partie des roles autorises pour la route
+  - Renvoie 403 si le role ne correspond pas
+  - Applicable sur toute route via middleware chaînable
+
+Exemple de route admin :
+  GET /api/admin/dashboard
+  -> authenticateToken -> requireRole('administrateur') -> handler
+
+Les mots de passe ne sont jamais stockes en clair :
+  - Hachage via bcryptjs avec un salt de 10 rounds
+  - Verification via bcrypt.compareSync()
+
+La duree de vie du JWT est configurable via JWT_EXPIRES_IN (defaut: 24h).
+
+==============================================================================
+3. STRATEGIE D'ISOLATION DES TOKENS (SESSION MULTI-UTILISATEURS)
+==============================================================================
+
+PROBLEME :
+  Le stockage classique dans localStorage ou sessionStorage utilise un
+  namespace global par origine (protocol + hostname + port). Si un utilisateur
+  ouvre 2 onglets avec des comptes differents dans le meme navigateur,
+  le 2e token ecrase le 1er.
+
+SOLUTION : Isolation par identifiant de session d'onglet
+
+  Le mecanisme repose sur 3 composants dans AxiosConfig.js :
+
+  1. GENERATION D'UN SESSION ID UNIQUE PAR ONGLET :
+     - A l'ouverture de l'onglet, la fonction getSessionKey() verifie si
+       sessionStorage contient deja un identifiant '_oc_sid'.
+     - Si non, elle en genere un unique : 'oc_' + timestamp + '_' + random
+     - Ce ID est stocke dans sessionStorage (qui est isole par onglet).
+     - Chaque onglet possede donc son propre sessionKey.
+
+  2. CLES DE STOCKAGE NAMESPACES :
+     - Le token n'est PAS stocke sous une cle globale.
+     - Il est stocke sous : '_oc_token_{sessionKey}'
+     - Exemple onglet 1 : _oc_token_oc_1725312000000_a3b4c5d6
+     - Exemple onglet 2 : _oc_token_oc_1725312005000_e7f8g9h0
+     - Meme si les deux onglets partagent le meme sessionStorage, les
+       cles sont distinctes car chaque onglet a son propre sessionKey.
+
+  3. RECHARGEMENT DE PAGE :
+     - Lors du rechargement (F5), le sessionKey persiste dans
+       sessionStorage (qui survit au refresh mais pas a la fermeture).
+     - La fonction getStoredToken() recupere le bon token pour cet onglet.
+     - Le AuthContext useEffect recharge le profil utilisateur via /auth/me.
+
+  FLUX :
+    Onglet ouvre -> genere _oc_sid unique
+              -> stocke token sous _oc_token_{_oc_sid}
+              -> a chaque requete Axios, lit _oc_token_{_oc_sid}
+              -> refresh page : _oc_sid persiste -> token recupere
+
+  AVANTAGE vs localStorage :
+    - localStorage est partage entre TOUS les onglets d'une meme origine
+    - sessionStorage est partage entre les onglets mais isole par instance
+    - Notre couche de sessionKey ajoute l'isolation AU-DESSUS de
+      sessionStorage pour garantir l'independance totale par onglet
+
+  FERMETURE DE L'ONGLET :
+    - Le sessionKey est automatiquement detruit par le navigateur
+    - La session est effectivement terminee
+
+  DECONNEXION :
+    - clearStoredToken() supprime la cle _oc_token_{sid} de sessionStorage
+    - L'utilisateur est redirige vers /login
+
+==============================================================================
+4. BASE DE DONNEES ET MODELE UTILISATEUR
+==============================================================================
+
+Engine : better-sqlite3 (WAL mode, synchronous)
+
+Table users :
+  +---------------+---------+-------------------------------------------+
+  | Champ         | Type    | Contraintes                               |
+  +---------------+---------+-------------------------------------------+
+  | id            | INTEGER | PRIMARY KEY AUTOINCREMENT                 |
+  | username      | TEXT    | NOT NULL UNIQUE                           |
+  | email         | TEXT    | NOT NULL UNIQUE                           |
+  | password_hash | TEXT    | NOT NULL (bcrypt)                         |
+  | role          | TEXT    | NOT NULL CHECK IN (administrateur,        |
+  |               |         |   partenaire, citoyen)                    |
+  | created_at    | DATETIME| DEFAULT CURRENT_TIMESTAMP                 |
+  | updated_at    | DATETIME| DEFAULT CURRENT_TIMESTAMP                 |
+  +---------------+---------+-------------------------------------------+
+
+Trois roles stricts :
+  - administrateur : acces complet, tableau de bord admin
+  - partenaire     : acces partenaires
+  - citoyen        : acces citoyen (role par defaut a l'inscription)
+
+Le script database.js :
+  - Cree la table si elle n'existe pas
+  - Insere 3 utilisateurs de test si la table est vide
+  - Utilise des transactions pour les insertions
+  - Les mots de passe sont haches avec bcryptjs (10 salt rounds)
+
+==============================================================================
+5. FLUX D'AUTHENTIFICATION
+==============================================================================
+
+INSCRIPTION :
+  1. L'utilisateur remplit le formulaire (username, email, password, role)
+  2. Validation cote client (longueur, format email)
+  3. POST /api/auth/register
+  4. Validation cote serveur (champs requis, unicite)
+  5. Hachage du mot de passe avec bcryptjs
+  6. Insertion en base de donnees
+  7. Generation d'un JWT contenant {id, role}
+  8. Le frontend stocke le token dans sessionStorage (isole)
+  9. Redirection vers la page protegee
+
+CONNEXION :
+  1. L'utilisateur saisit email + mot de passe
+  2. POST /api/auth/login
+  3. Verification de l'existence de l'utilisateur par email
+  4. Comparaison bcrypt du mot de passe
+  5. Generation d'un JWT contenant {id, role}
+  6. Reponse avec token + infos utilisateur
+  7. Le frontend stocke le token et met a jour le contexte
+  8. Redirection vers la page appropriate selon le role
+
+SESSION ACTIVE :
+  1. A chaque chargement, AuthContext verifie le token stocke
+  2. GET /api/auth/me avec le token dans le header Authorization
+  3. Si valide : profil utilisateur charge dans le state
+  4. Si invalide/expire : deconnexion automatique + redirection
+
+ROUTES PROTEGEES (frontend) :
+  - <ProtectedRoute roles={['administrateur']}> : acces admin uniquement
+  - <ProtectedRoute> : acces si authentifie (tout role)
+  - <ProtectedRoute roles={['partenaire', 'citoyen']}> : acces specifique
+
+==============================================================================
+6. STRUCTURE DES FICHIERS LIVRES
+==============================================================================
+
+backend/express/
+├─ package.json              Manifeste des dependances
+├─ .env                      Variables d'environnement (JWT_SECRET, PORT)
+├─ server.js                 Serveur Express + routes API
+├─ database.js               Schema SQLite + seed utilisateurs
+├─ routes/
+│  └─ auth.js                Routes register/login/me
+├─ middleware/
+│  ├─ auth.js                Middleware verification JWT
+│  └─ roles.js               Middleware controle de roles
+└─ node_modules/             Dependances installees
+
+src/authentification/
+├─ AxiosConfig.js            Instance Axios + intercepteurs + token isole
+├─ AuthContext.jsx           Contexte React d'authentification
+├─ AuthPage.jsx              Conteneur Login/Register
+├─ LoginPage.jsx             Formulaire de connexion
+├─ RegisterPage.jsx          Formulaire d'inscription
+├─ ProtectedRoute.jsx        Composant de protection de routes
+└─ auth.css                  Styles des pages d'authentification
+
+==============================================================================
+7. DEMARCHE DE LANCEMENT ET TEST LOCAL
+==============================================================================
+
+PREREQUIS :
+  - Node.js >= 18
+  - npm
+
+ETAPES :
+
+  1. Lancer le backend :
+     $ cd backend/express
+     $ npm install            # deja effectue
+     $ npm start
+     # Le serveur demarre sur http://localhost:3001
+     # La BDD opencode.db est creee automatiquement
+     # Les 3 utilisateurs de test sont inseres
+
+  2. Lancer le frontend :
+     $ cd /home/deadly/projet-dev/jeannie/opencode-test
+     $ npm run dev
+     # Le frontend demarre sur http://localhost:5173
+
+  3. Tester l'authentification :
+     - Ouvrir http://localhost:5173
+     - Integrez les composants AuthPage dans App.jsx :
+         import { BrowserRouter } from 'react-router-dom';
+         import { AuthProvider } from './authentification/AuthContext.jsx';
+         import AuthPage from './authentification/AuthPage.jsx';
+         import ProtectedRoute from './authentification/ProtectedRoute.jsx';
+
+         function App() {
+           return (
+             <BrowserRouter>
+               <AuthProvider>
+                 <Routes>
+                   <Route path="/login" element={<AuthPage />} />
+                   <Route path="/protected" element={
+                     <ProtectedRoute><Map3DViewer /></ProtectedRoute>
+                   } />
+                 </Routes>
+               </AuthProvider>
+             </BrowserRouter>
+           );
+         }
+     - Se connecter avec admin@opencode.mg / Admin@2024!
+     - Tester l'inscription avec un nouveau compte
+     - Ouvrir un 2e onglet avec un compte different pour valider l'isolation
+
+  4. Tester l'isolation multi-onglets :
+     - Onglet 1 : se connecter en tant que "admin"
+     - Onglet 2 : se connecter en tant que "partenaire1"
+     - Verifier que chaque onglet affiche le bon utilisateur
+     - Actualiser chaque onglet : la session persiste correctement
+
+  5. Tester les API directement (curl) :
+     # Login
+     curl -X POST http://localhost:3001/api/auth/login \
+       -H "Content-Type: application/json" \
+       -d '{"email":"admin@opencode.mg","password":"Admin@2024!"}'
+
+     # Protegee (avec token)
+     curl http://localhost:3001/api/auth/me \
+       -H "Authorization: Bearer <VOTRE_TOKEN>"
+
+     # Admin uniquement (sans bon role -> 403)
+     curl http://localhost:3001/api/admin/dashboard \
+       -H "Authorization: Bearer <TOKEN_CITOYEN>"
+
+==============================================================================
+8. COMPTES DE TEST PAR DEFAUT
+==============================================================================
+
+  +---------------+-------------------------+-------------------+---------------+
+  | Username      | Email                   | Mot de passe      | Role          |
+  +---------------+-------------------------+-------------------+---------------+
+  | admin         | admin@opencode.mg       | Admin@2024!       | administrateur|
+  | partenaire1   | partenaire@opencode.mg  | Partenaire@2024!  | partenaire    |
+  | citoyen1      | citoyen@opencode.mg     | Citoyen@2024!     | citoyen       |
+  +---------------+-------------------------+-------------------+---------------+
+
+  ATTENTION : Ces comptes sont pour le developpement uniquement.
+  En production, il faut :
+  - Changer JWT_SECRET dans .env
+  - Supprimer les comptes de test
+  - Activer la validation email
+  - Configurer HTTPS
+  - Ajouter du rate limiting
+
+==============================================================================
+FIN DU RAPPORT
+==============================================================================

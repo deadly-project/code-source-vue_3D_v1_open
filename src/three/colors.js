@@ -4,7 +4,6 @@
 
 export const COLORS = {
   terrain: '#ffffff',
-  basePlane: '#2f3b33',
   building: '#c9c9c9',
   buildingSelected: '#ffd400',
   highway: '#d98a3d',

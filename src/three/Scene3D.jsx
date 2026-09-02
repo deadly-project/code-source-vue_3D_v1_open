@@ -4,18 +4,15 @@
 //
 // Structure verticale (repère Z-up : X=est, Y=nord, Z=altitude) :
 //
-//   BAS  : le socle plat (surface de base, toute l'emprise) sur lequel
-//          reposent les lignes qui restent en bas — celles qui sont HORS
-//          du fokotany.
+//   BAS  : les éléments (routes, eaux, bâtiments) qui sont HORS de la
+//          surface du fokotany, posés à l'altitude du bas (baseZ).
 //   HAUT : le fokotany (le relief/MNT) qui est « enlevé » et monté en haut
-//          (survolé), emportant avec lui les lignes qui sont À L'INTÉRIEUR.
+//          (survolé), emportant avec lui les éléments qui sont À L'INTÉRIEUR
+//          de sa surface.
+//   VIDE : l'espace entre le bas et le haut, sans liaison.
 //
-// Mécanisme (que l'utilisateur décrit comme un carré + un cercle enlevé) :
-//   - Le fokotany = la zone couverte par le relief valide.
-//   - Les lignes DANS le fokotany montent avec lui (en haut).
-//   - Les lignes HORS du fokotany restent en bas, sans jamais monter.
-//   - Les bâtiments suivent le relief (donc se retrouvent avec le fokotany,
-//     en haut).
+// La hauteur de survol est DYNAMIQUE (prop `survol`) : ajustable depuis le
+// panneau de l'interface (0 m -> à l'infini).
 
 import { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
@@ -27,17 +24,13 @@ import {
   createFokotanyTester,
 } from '../utils/loadData';
 import Terrain from './Terrain';
-import BasePlane from './BasePlane';
 import Buildings from './Buildings';
 import NetworkLines from './NetworkLines';
 import CameraController from './CameraController';
 import { COLORS } from './colors';
 
-// De combien le fokotany (relief) est survolé au-dessus du socle du bas.
-const SURVOL = 20;
-
-// Cadre la caméra sur l'ensemble du modèle (socle du bas + fokotany en haut).
-function computeViewBounds(terrain, buildings, baseZ) {
+// Cadre la caméra sur l'ensemble du modèle (bas + fokotany en haut).
+function computeViewBounds(terrain, buildings, baseZ, survol) {
   const box = new THREE.Box3();
   let maxTop = 0;
 
@@ -54,7 +47,7 @@ function computeViewBounds(terrain, buildings, baseZ) {
       new THREE.Vector3(
         terrain.maxx,
         terrain.maxy,
-        terrain.maxElevation + SURVOL + maxTop
+        terrain.maxElevation + survol + maxTop
       )
     );
   }
@@ -70,7 +63,7 @@ function computeViewBounds(terrain, buildings, baseZ) {
   return { box, center, radius };
 }
 
-export default function Scene3D({ onBuildingSelect }) {
+export default function Scene3D({ onBuildingSelect, survol = 40 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -102,7 +95,7 @@ export default function Scene3D({ onBuildingSelect }) {
     return createFokotanyTester(data.terrain);
   }, [data]);
 
-  // Altitude du socle du bas
+  // Altitude de pose des éléments du bas (base du relief)
   const baseZ = useMemo(() => {
     return data?.terrain ? data.terrain.minElevation : 0;
   }, [data]);
@@ -110,8 +103,8 @@ export default function Scene3D({ onBuildingSelect }) {
   // Bounding box du modèle (cadrage sur tout le modèle)
   const bounds = useMemo(() => {
     if (!data) return null;
-    return computeViewBounds(data.terrain, data.buildings, baseZ);
-  }, [data, baseZ]);
+    return computeViewBounds(data.terrain, data.buildings, baseZ, survol);
+  }, [data, baseZ, survol]);
 
   const handleSelect = (bid) => {
     setSelectedId(bid);
@@ -166,17 +159,8 @@ export default function Scene3D({ onBuildingSelect }) {
       />
       <hemisphereLight args={['#ffffff', '#3a2e2e', 0.35]} />
 
-      {/* BAS : socle plat + lignes restées en bas */}
-      <BasePlane
-        minx={t.minx}
-        maxx={t.maxx}
-        miny={t.miny}
-        maxy={t.maxy}
-        z={baseZ}
-      />
-
       {/* HAUT : le fokotany (relief) enlevé et monté en haut */}
-      <Terrain data={t} offsetZ={SURVOL} />
+      <Terrain data={t} offsetZ={survol} />
 
       {/* Bâtiments : dans le fokotany -> en haut ; hors -> en bas */}
       <Buildings
@@ -184,7 +168,7 @@ export default function Scene3D({ onBuildingSelect }) {
         terrain={t}
         fokotany={fokotany}
         baseZ={baseZ}
-        survol={SURVOL}
+        survol={survol}
         onSelect={handleSelect}
         selectedId={selectedId}
       />
@@ -195,7 +179,7 @@ export default function Scene3D({ onBuildingSelect }) {
         sampler={terrainSampler}
         fokotany={fokotany}
         baseZ={baseZ}
-        survol={SURVOL}
+        survol={survol}
         color={COLORS.highway}
         lineWidth={3}
         offsetZ={1.5}
@@ -207,7 +191,7 @@ export default function Scene3D({ onBuildingSelect }) {
         sampler={terrainSampler}
         fokotany={fokotany}
         baseZ={baseZ}
-        survol={SURVOL}
+        survol={survol}
         color={COLORS.waterway}
         lineWidth={4}
         offsetZ={1.5}

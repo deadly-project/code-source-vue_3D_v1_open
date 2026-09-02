@@ -5,7 +5,7 @@
 //   - Bâtiment DANS le fokotany (centroïde dans la surface) -> EN HAUT,
 //     posé sur le relief survolé (base = hauteur relief + survol).
 //   - Bâtiment HORS   du fokotany                        -> EN BAS,
-//     posé sur le socle plat du bas (base = baseZ).
+//     posé à l'altitude de base du bas (baseZ).
 // Chaque bâtiment est assigné EN ENTIER à son niveau, donc aucun ne flotte
 // au milieu de l'espace vide entre le haut et le bas.
 //

@@ -10,7 +10,6 @@ import { COLORS } from '../three/colors';
 
 const LEGEND_ITEMS = [
   { label: 'Fokotany (relief, survol)', color: COLORS.terrain, hint: 'Couche montée en haut' },
-  { label: 'Socle du bas', color: COLORS.basePlane, hint: 'Lignes restées en bas' },
   { label: 'Bâtiments', color: COLORS.building, hint: 'Cliquer pour les détails' },
   { label: 'Routes (highway)', color: COLORS.highway, hint: 'Tronçons haut + bas' },
   { label: 'Cours d\u2019eau', color: COLORS.waterway, hint: 'Tronçons haut + bas' },
@@ -18,6 +17,7 @@ const LEGEND_ITEMS = [
 
 export default function Map3DViewer() {
   const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const [survol, setSurvol] = useState(40);
 
   return (
     <div
@@ -29,13 +29,59 @@ export default function Map3DViewer() {
         background: '#111318',
       }}
     >
-      <Scene3D onBuildingSelect={setSelectedBuilding} />
+      <Scene3D onBuildingSelect={setSelectedBuilding} survol={survol} />
+
+      {/* Contrôle du survol (dynamique, 0 m -> infini) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 16,
+          left: 16,
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(18, 18, 22, 0.9)',
+          color: '#fff',
+          padding: '8px 12px',
+          borderRadius: 10,
+          fontSize: 12.5,
+          fontFamily: 'system-ui, sans-serif',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        <label htmlFor="survol-input" style={{ opacity: 0.9, whiteSpace: 'nowrap' }}>
+          Survol :
+        </label>
+        <input
+          id="survol-input"
+          type="number"
+          min="0"
+          step="1"
+          value={survol}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setSurvol(Number.isFinite(v) && v >= 0 ? v : 0);
+          }}
+          style={{
+            width: 72,
+            padding: '4px 6px',
+            background: 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            color: '#fff',
+            borderRadius: 6,
+            fontSize: 12.5,
+          }}
+        />
+        <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>m</span>
+      </div>
 
       {/* Légende permanente de la carte */}
       <div
         style={{
           position: 'absolute',
-          top: 16,
+          top: 64,
           left: 16,
           minWidth: 180,
           background: 'rgba(18, 18, 22, 0.9)',
