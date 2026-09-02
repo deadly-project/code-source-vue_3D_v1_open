@@ -4,7 +4,7 @@
 //
 // Chaque point de chaque ligne est reprojeté en altitude via
 // l'échantillonneur du terrain (interpolation bilinéaire) pour que les
-// lignes épousent le relief (pas d'altitude fixe arbitraire).
+// lignes épousent le relief.
 //
 // Utilise <Line> de drei (Line2) pour obtenir une largeur de trait
 // fiable sur tous les GPU (contrairement à lineBasicMaterial.linewidth).

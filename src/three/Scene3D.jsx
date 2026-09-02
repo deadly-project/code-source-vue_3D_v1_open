@@ -11,23 +11,19 @@ import { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import {
-  loadAllSceneData,
-  createTerrainSampler,
-} from '../utils/loadData';
+import { loadAllSceneData, createTerrainSampler } from '../utils/loadData';
 import Terrain from './Terrain';
 import Buildings from './Buildings';
 import NetworkLines from './NetworkLines';
 import CameraController from './CameraController';
+import { COLORS } from './colors';
 
-// Dès que les données arrivent, on calcule la bounding box commune.
-// On cadre la caméra sur le terrain (zone d'intérêt) qui contient aussi
-// les bâtiments. Les lignes (routes/waterways) peuvent s'étendre bien au
-// delà du terrain (ex. canaux), on ne les inclut donc pas pour le cadrage.
+// Cadre la caméra sur le terrain (zone d'intérêt), qui contient aussi les
+// bâtiments. Les lignes (routes/waterways) peuvent s'étendre bien au-delà du
+// terrain (ex. canaux), on ne les inclut donc pas pour le cadrage.
 function computeViewBounds(terrain, buildings) {
   const box = new THREE.Box3();
 
-  // Terrain (zone d'intérêt principale)
   if (terrain) {
     box.expandByPoint(
       new THREE.Vector3(terrain.minx, terrain.miny, terrain.minElevation)
@@ -37,8 +33,6 @@ function computeViewBounds(terrain, buildings) {
     );
   }
 
-  // Bâtiments : étend la boîte verticalement pour prendre en compte les
-  // hauteurs d'extrusion (les footprints sont contenus dans le terrain).
   if (buildings && buildings.buildings && terrain) {
     let maxTop = 0;
     for (const b of buildings.buildings) {
@@ -81,13 +75,13 @@ export default function Scene3D({ onBuildingSelect }) {
     };
   }, []);
 
-  // Calcul du sampler du terrain (partagé par lignes et bâtiments)
+  // Échantillonneur du terrain (partagé par les lignes et les bâtiments)
   const terrainSampler = useMemo(() => {
     if (!data?.terrain) return null;
     return createTerrainSampler(data.terrain);
   }, [data]);
 
-  // Bounding box du modèle (cadrage sur la zone d'intérêt : terrain+bâtiments)
+  // Bounding box du modèle (cadrage sur le terrain + bâtiments)
   const bounds = useMemo(() => {
     if (!data) return null;
     return computeViewBounds(data.terrain, data.buildings);
@@ -130,11 +124,12 @@ export default function Scene3D({ onBuildingSelect }) {
   return (
     <Canvas
       shadows
-      camera={{ fov: 50, near: 0.5, far: 5000 }}
+      camera={{ fov: 45, near: 0.5, far: 5000, up: [0, 0, 1] }}
       style={{ width: '100%', height: '100%' }}
       dpr={[1, 2]}
+      gl={{ antialias: true }}
     >
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.6} />
       <directionalLight
         position={[center.x + 800, center.y - 800, center.z + 600]}
         intensity={1.4}
@@ -142,11 +137,9 @@ export default function Scene3D({ onBuildingSelect }) {
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
-      <hemisphereLight groundColor="#3a2e2e" intensity={0.35} />
+      <hemisphereLight args={['#ffffff', '#3a2e2e', 0.35]} />
 
       <Terrain data={data.terrain} />
-
-      {boundaryMesh(data)}
 
       <Buildings
         buildingsData={data.buildings}
@@ -158,7 +151,7 @@ export default function Scene3D({ onBuildingSelect }) {
       <NetworkLines
         lines={data.highways.lines}
         sampler={terrainSampler}
-        color="#8D6169"
+        color={COLORS.highway}
         lineWidth={3}
         offsetZ={1.5}
       />
@@ -166,15 +159,12 @@ export default function Scene3D({ onBuildingSelect }) {
       <NetworkLines
         lines={data.waterways.lines}
         sampler={terrainSampler}
-        color="#4A94D8"
+        color={COLORS.waterway}
         lineWidth={4}
         offsetZ={1.5}
       />
 
-      <CameraController
-        target={center}
-        radius={radius}
-      />
+      <CameraController target={center} radius={radius} />
 
       <OrbitControls
         makeDefault
@@ -185,19 +175,5 @@ export default function Scene3D({ onBuildingSelect }) {
         target={[center.x, center.y, center.z]}
       />
     </Canvas>
-  );
-}
-
-// Affiche une fine grille ou boîte pour contextualiser l'emprise du modèle
-function boundaryMesh(data) {
-  if (!data.terrain) return null;
-  const { minx, miny, maxx, maxy } = data.terrain;
-  const w = maxx - minx;
-  const h = maxy - miny;
-  return (
-    <gridHelper
-      args={[Math.max(w, h), 40, '#888888', '#444444']}
-      position={[minx + w / 2, miny + h / 2, data.terrain.minElevation - 0.5]}
-    />
   );
 }

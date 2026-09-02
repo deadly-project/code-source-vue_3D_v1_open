@@ -17,11 +17,14 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createTerrainSampler } from '../utils/loadData';
+import { COLORS } from './colors';
 
 export default function Buildings({ buildingsData, terrain, onSelect, selectedId }) {
   const meshRef = useRef();
 
-  // Construction de la géométrie fusionnée de tous les bâtiments
+  // Construction de la géométrie fusionnée de tous les bâtiments.
+  // Chaque bâtiment est posé sur le terrain : sa base est à l'altitude du
+  // relief échantillonnée au centroïde du footprint.
   const built = useMemo(() => {
     if (!buildingsData || !buildingsData.buildings || !terrain) return null;
 
@@ -104,7 +107,7 @@ export default function Buildings({ buildingsData, terrain, onSelect, selectedId
         receiveShadow
       >
         <meshStandardMaterial
-          color="#cfcfcf"
+          color={COLORS.building}
           roughness={0.7}
           metalness={0.05}
           flatShading
@@ -113,27 +116,29 @@ export default function Buildings({ buildingsData, terrain, onSelect, selectedId
 
       {highlightGeometry && (
         <mesh geometry={highlightGeometry} castShadow>
-          <meshBasicMaterial color="#ffd400" />
+          <meshBasicMaterial color={COLORS.buildingSelected} />
         </mesh>
       )}
     </group>
   );
 }
 
-// Extrude un anneau en une/pr deux géométries BufferGeometry (dimension 3D).
+// Extrude un anneau en géométries BufferGeometry (dimension 3D).
 // Retourne un tableau de BufferGeometry, toutes avec les attributs
 // position + normal + uv + index pour être compatibles à la fusion.
+//
+// Fidèle au rendu QGIS 3D de référence (rendered-facade="Walls|Roof") :
+// on ne génère que les MURS et le TOIT, PAS la face inférieure (sol).
+// Le bâtiment est donc "en survol" : sans face de fond connectée au sol.
 function extrudeBuilding(ring, baseZ, height) {
   const geometries = [];
 
-  // ----- Sol (base) -----
-  const base = polygonGeometry(ring, baseZ, +1);
-  // ----- Toit -----
-  const roof = polygonGeometry(ring, baseZ + height, -1);
+  // ----- Toit (dessus, normale vers ... top) -----
+  const roof = polygonGeometry(ring, baseZ + height, +1);
   // ----- Murs -----
   const walls = wallsGeometry(ring, baseZ, baseZ + height);
 
-  geometries.push(base, roof, walls);
+  geometries.push(walls, roof);
   return geometries;
 }
 

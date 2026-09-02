@@ -120,6 +120,10 @@ def build_terrain(meta):
 
     valid_mask = arr != nodata
 
+    # Masque original de validité : sert d'alpha (1 = vrai relief, 0 = NoData).
+    # On conserve l'original car valid_mask est ensuite modifié (remplissage).
+    orig_valid_mask = valid_mask.copy()
+
     # Remplit les NoData internes avec la moyenne des 4 voisins valides
     # (itératif -- suffisant pour cette grille). Sinon moyenne globale.
     global_mean = float(arr[valid_mask].mean()) if valid_mask.any() else 1249.0
@@ -164,6 +168,10 @@ def build_terrain(meta):
     # On inverse donc les lignes et on aplatit en une liste de longueur rows*cols.
     z_values = arr_clean[::-1].ravel().tolist()
 
+    # Alpha (validité réelle du relief) : 1 = donnée valide, 0 = NoData.
+    # Même orientation que z (row 0 = sud) et tableau plat row-major.
+    alpha_values = orig_valid_mask[::-1].ravel().astype(int).tolist()
+
     out = {
         "type": "terrain",
         "crs": "EPSG:32738",
@@ -180,6 +188,7 @@ def build_terrain(meta):
         "minElevation": float(stats[0]),
         "maxElevation": float(stats[1]),
         "z": z_values,
+        "alpha": alpha_values,
         "textureUrl": "data/terrain.webp",
     }
 

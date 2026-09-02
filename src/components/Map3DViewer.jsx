@@ -6,6 +6,13 @@
 
 import { useState } from 'react';
 import Scene3D from '../three/Scene3D';
+import { COLORS } from '../three/colors';
+
+const LEGEND_ITEMS = [
+  { label: 'Bâtiments', color: COLORS.building, hint: 'Cliquer pour les détails' },
+  { label: 'Routes (highway)', color: COLORS.highway, hint: 'Réseau routier' },
+  { label: 'Cours d\u2019eau', color: COLORS.waterway, hint: 'Canaux, drains' },
+];
 
 export default function Map3DViewer() {
   const [selectedBuilding, setSelectedBuilding] = useState(null);
@@ -21,6 +28,64 @@ export default function Map3DViewer() {
       }}
     >
       <Scene3D onBuildingSelect={setSelectedBuilding} />
+
+      {/* Légende permanente de la carte */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 16,
+          left: 16,
+          minWidth: 180,
+          background: 'rgba(18, 18, 22, 0.9)',
+          color: '#fff',
+          padding: '12px 14px',
+          borderRadius: 10,
+          fontSize: 12.5,
+          lineHeight: 1.4,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+          zIndex: 10,
+          fontFamily: 'system-ui, sans-serif',
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 600,
+            marginBottom: 8,
+            letterSpacing: 0.4,
+            opacity: 0.9,
+          }}
+        >
+          Légende
+        </div>
+        {LEGEND_ITEMS.map((item) => (
+          <div
+            key={item.label}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 7,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span
+              style={{
+                width: 14,
+                height: 14,
+                flexShrink: 0,
+                borderRadius: 3,
+                background: item.color,
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)',
+              }}
+            />
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span>{item.label}</span>
+              <span style={{ opacity: 0.6, fontSize: 11 }}>{item.hint}</span>
+            </span>
+          </div>
+        ))}
+      </div>
 
       {selectedBuilding && (
         <div
