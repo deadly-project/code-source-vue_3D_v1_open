@@ -1,10 +1,6 @@
-// src/components/Map3DViewer.jsx
-//
-// Point d'entrée principal de la vue 3D.
-// Monte la scène React Three Fiber et le panneau d'information du
-// bâtiment sélectionné.
-
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../authentification/AuthContext.jsx';
 import Scene3D from '../three/Scene3D';
 import { COLORS } from '../three/colors';
 
@@ -18,7 +14,9 @@ const LEGEND_ITEMS = [
 export default function Map3DViewer() {
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const [survol, setSurvol] = useState(40);
-
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  
   return (
     <div
       style={{
@@ -29,6 +27,52 @@ export default function Map3DViewer() {
         background: '#111318',
       }}
     >
+      <div
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          zIndex: 30,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: 'rgba(18, 18, 22, 0.92)',
+          color: '#fff',
+          padding: '8px 12px',
+          borderRadius: 10,
+          fontFamily: 'system-ui, sans-serif',
+        }}
+      >
+        <span>
+          {user?.username}
+        </span>
+      
+        <span
+          style={{
+            opacity: 0.6,
+            fontSize: 12,
+          }}
+        >
+          ({user?.role})
+        </span>
+        
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login', {
+              replace: true,
+            });
+          }}
+          style={{
+            padding: '6px 10px',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >
+          Déconnexion
+        </button>
+      </div>
       <Scene3D onBuildingSelect={setSelectedBuilding} survol={survol} />
 
       {/* Contrôle du survol (dynamique, 0 m -> infini) */}

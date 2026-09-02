@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
 import './auth.css';
 
-export default function LoginPage({ onSwitchToRegister }) {
+export default function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -11,13 +14,21 @@ export default function LoginPage({ onSwitchToRegister }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setError('');
     setLoading(true);
 
     try {
       await login(email, password);
+
+      // Connexion réussie
+      navigate('/map', { replace: true });
+
     } catch (err) {
-      const msg = err.response?.data?.error || 'Erreur de connexion au serveur';
+      const msg =
+        err.response?.data?.error ||
+        'Erreur de connexion au serveur';
+
       setError(msg);
     } finally {
       setLoading(false);
@@ -27,16 +38,27 @@ export default function LoginPage({ onSwitchToRegister }) {
   return (
     <div className="auth-container">
       <div className="auth-card">
+
         <div className="auth-header">
           <h1 className="auth-title">Opencode</h1>
-          <p className="auth-subtitle">Connectez-vous a votre compte</p>
+          <p className="auth-subtitle">
+            Connectez-vous à votre compte
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          {error && <div className="auth-error">{error}</div>}
+
+          {error && (
+            <div className="auth-error">
+              {error}
+            </div>
+          )}
 
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">
+              Email
+            </label>
+
             <input
               id="email"
               type="email"
@@ -49,7 +71,10 @@ export default function LoginPage({ onSwitchToRegister }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Mot de passe</label>
+            <label htmlFor="password">
+              Mot de passe
+            </label>
+
             <input
               id="password"
               type="password"
@@ -61,19 +86,32 @@ export default function LoginPage({ onSwitchToRegister }) {
             />
           </div>
 
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? 'Connexion...' : 'Se connecter'}
+          <button
+            type="submit"
+            className="auth-btn"
+            disabled={loading}
+          >
+            {loading
+              ? 'Connexion...'
+              : 'Se connecter'}
           </button>
+
         </form>
 
         <div className="auth-footer">
           <p>
             Pas encore de compte ?{' '}
-            <button className="auth-link" onClick={onSwitchToRegister}>
-              Creer un compte
+
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() => navigate('/register')}
+            >
+              Créer un compte
             </button>
           </p>
         </div>
+
       </div>
     </div>
   );

@@ -34,6 +34,21 @@ export function initializeDatabase() {
     );
   `);
 
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS dynamic_elements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('eau', 'route', 'batiment')),
+      height REAL,
+      distance REAL,
+      path TEXT NOT NULL DEFAULT '[]',
+      x REAL NOT NULL,
+      y REAL NOT NULL,
+      in_fokotany INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   seedDefaultUsers(database);
 
   return database;

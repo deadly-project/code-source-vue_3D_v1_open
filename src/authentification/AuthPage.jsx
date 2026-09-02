@@ -1,15 +1,30 @@
-import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
-import LoginPage from './LoginPage.jsx';
-import RegisterPage from './RegisterPage.jsx';
-import './auth.css';
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const { user, loading } = useAuth();
 
-  return isLogin ? (
-    <LoginPage onSwitchToRegister={() => setIsLogin(false)} />
-  ) : (
-    <RegisterPage onSwitchToLogin={() => setIsLogin(true)} />
-  );
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+          background: '#0f172a',
+          color: '#e2e8f0',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        Chargement...
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/map" replace />;
+  }
+
+  return <Navigate to="/login" replace />;
 }

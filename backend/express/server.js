@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { initializeDatabase } from './database.js';
 import authRoutes from './routes/auth.js';
+import dynamicElementsRoutes from './routes/dynamicElements.js';
 import { authenticateToken } from './middleware/auth.js';
 import { requireRole } from './middleware/roles.js';
 
