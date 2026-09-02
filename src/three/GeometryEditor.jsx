@@ -34,10 +34,22 @@ export default function GeometryEditor({
   };
 
   const handleMove = ({ x, y }) => {
-    if (dragIndex === null) return;
-    const next = points.map((p, i) => (i === dragIndex ? [x, y] : p));
-    onChange(next);
-  };
+  console.log('🟢 GEOMETRY EDITOR MOVE', {
+    mouseWorld: {
+      x,
+      y,
+    },
+    dragIndex,
+  });
+
+  if (dragIndex === null) return;
+
+  const next = points.map((p, i) =>
+    i === dragIndex ? [x, y] : p
+  );
+
+  onChange(next);
+};
 
   const handleUp = () => {
     setDragIndex(null);
@@ -53,7 +65,17 @@ export default function GeometryEditor({
         onUp={handleUp}
       />
       {points.map(([x, y], i) => (
-        <mesh key={i} position={[x, y, z(x, y) + 2]} onPointerDown={startDrag(i)}>
+        <mesh key={i} position={[x, y, z(x, y) + 2]} onPointerDown={(e) => {
+      console.log('🔴 HANDLE DOWN', {
+        index: i,
+        handleX: e.object.position.x,
+        handleY: e.object.position.y,
+        pointerX: e.point.x,
+        pointerY: e.point.y,
+      });
+
+      startDrag(i)(e);
+    }}>
           <sphereGeometry args={[HANDLE_RADIUS, 16, 16]} />
           <meshBasicMaterial
             color={i === selectedIndex ? COLORS.handleSelected : COLORS.handle}

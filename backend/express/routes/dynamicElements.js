@@ -80,10 +80,16 @@ router.post('/elements', (req, res) => {
     }
 
     const first = coords[0];
-    const x = typeof first?.[0] === 'number' ? first[0] : 0;
-    const y = typeof first?.[1] === 'number' ? first[1] : 0;
+    const x = typeof req.body.x === 'number'
+      ? req.body.x
+      : (typeof first?.[0] === 'number' ? first[0] : 0);
 
-    const db = getDb();
+    const y =
+    typeof req.body.y === 'number'
+      ? req.body.y
+      : (typeof first?.[1] === 'number' ? first[1] : 0);
+    
+      const db = getDb();
     const result = db.prepare(
       `INSERT INTO dynamic_elements
          (name, type, height, distance, path, x, y, in_fokotany)

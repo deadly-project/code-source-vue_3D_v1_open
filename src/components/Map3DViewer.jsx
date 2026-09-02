@@ -160,7 +160,7 @@ export default function Map3DViewer() {
   const handlePick = ({ x, y }) => {
 
     console.log('📍 Point cliqué - coordonnées brutes:', { x, y });
-    
+
     if (mode === 'building') {
       setPendingPayload({ type: 'building', center: [x, y] });
       setShowForm(true);
@@ -191,9 +191,23 @@ export default function Map3DViewer() {
       let payload;
       if (pendingPayload.type === 'building') {
         const [cx, cy] = pendingPayload.center;
-        const geometry = rectRing(cx, cy, Number(largeur) || 8, Number(profondeur) || 8);
-        payload = { type: 'building', name, geometry, height: Number(height) || 3 };
-      } else {
+            
+        const geometry = rectRing(
+          cx,
+          cy,
+          Number(largeur) || 8,
+          Number(profondeur) || 8
+        );
+      
+        payload = {
+          type: 'building',
+          name,
+          geometry,
+          height: Number(height) || 3,
+          x: cx,
+          y: cy,
+        };
+      }else {
         payload = {
           type: pendingPayload.type,
           name,

@@ -22,18 +22,68 @@ export default function PointerGroundPlane({ bounds, active, onPick, onMove, onU
   const sizeX = (box.max.x - box.min.x) * 3 + 200;
   const sizeY = (box.max.y - box.min.y) * 3 + 200;
 
+  console.log('🟦 POINTER GROUND PLANE', {
+  minX: box.min.x,
+  minY: box.min.y,
+  minZ: box.min.z,
+
+  maxX: box.max.x,
+  maxY: box.max.y,
+  maxZ: box.max.z,
+
+  centerX: cx,
+  centerY: cy,
+
+  sizeX,
+  sizeY,
+
+  planeZ: box.min.z - 500,
+});
+
   return (
     <mesh
       position={[cx, cy, box.min.z - 500]}
       visible={false}
       onClick={(e) => {
-        e.stopPropagation();
-        if (onPick) onPick({ x: e.point.x, y: e.point.y });
-      }}
+  e.stopPropagation();
+
+  console.log('🎯 CLICK WORLD POINT', {
+    x: e.point.x,
+    y: e.point.y,
+    z: e.point.z,
+
+    objectPosition: [
+      e.object.position.x,
+      e.object.position.y,
+      e.object.position.z
+    ],
+
+    bounds: {
+      minX: box.min.x,
+      minY: box.min.y,
+      maxX: box.max.x,
+      maxY: box.max.y,
+    }
+  });
+
+  if (onPick) {
+    onPick({
+      x: e.point.x,
+      y: e.point.y
+    });
+  }
+}}
       onPointerMove={(e) => {
         if (!onMove) return;
         e.stopPropagation();
+        console.log('🎯 POINTER MOVE WORLD', {
+            x: e.point.x,
+            y: e.point.y,
+            z: e.point.z,
+          });
+      
         onMove({ x: e.point.x, y: e.point.y });
+
       }}
       onPointerUp={(e) => {
         if (!onUp) return;
