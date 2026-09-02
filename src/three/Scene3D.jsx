@@ -13,10 +13,24 @@
 //
 // La hauteur de survol est DYNAMIQUE (prop `survol`) : ajustable depuis le
 // panneau de l'interface (0 m -> à l'infini).
+//
+// AJOUT — éléments personnalisés (bâtiments/route/eau ajoutés depuis
+// l'interface) :
+//   - `customElements` est rendu par <CustomElements>, avec des couleurs
+//     distinctes des données par défaut.
+//   - `mode` pilote l'interaction : 'view' (navigation normale),
+//     'building' | 'water' | 'highway' (placement, un <PointerGroundPlane>
+//     invisible capte les clics et les remonte via `onPick`), ou
+//     'edit-geometry' (poignées glissables sur `editingGeometry` via
+//     <GeometryEditor>, qui désactive les OrbitControls pendant le glissé).
+//   - La sélection des éléments personnalisés est CONTRÔLÉE par le parent
+//     (Map3DViewer) via `selectedCustomId` / `onSelectCustom`, contrairement
+//     à la sélection des bâtiments par défaut qui reste gérée ici
+//     (comportement existant inchangé).
 
 import { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   loadAllSceneData,
@@ -26,8 +40,15 @@ import {
 import Terrain from './Terrain';
 import Buildings from './Buildings';
 import NetworkLines from './NetworkLines';
+
+import CustomElements from './Customelements';
+import PointerGroundPlane from './Pointergroundplane';
+import GeometryEditor from './GeometryEditor';
 import CameraController from './CameraController';
+import { computeDisplayZ } from './placement';
 import { COLORS } from './colors';
+
+const ADD_MODES = ['building', 'water', 'highway'];
 
 // Cadre la caméra sur l'ensemble du modèle (bas + fokotany en haut).
 function computeViewBounds(terrain, buildings, baseZ, survol) {
@@ -63,10 +84,26 @@ function computeViewBounds(terrain, buildings, baseZ, survol) {
   return { box, center, radius };
 }
 
-export default function Scene3D({ onBuildingSelect, survol = 40 }) {
+export default function Scene3D({
+  onBuildingSelect,
+  survol = 40,
+
+  // --- Éléments personnalisés ---
+  customElements = [],
+  mode = 'view',
+  draftPoints = [],
+  onPick,
+  selectedCustomId = null,
+  onSelectCustom,
+  editingGeometry = null,
+  onGeometryChange,
+  editingSelectedPointIndex = null,
+  onEditingSelectPoint,
+}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [controlsEnabled, setControlsEnabled] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +151,8 @@ export default function Scene3D({ onBuildingSelect, survol = 40 }) {
     }
   };
 
+  const handleDraggingChange = (dragging) => setControlsEnabled(!dragging);
+
   if (error) {
     return (
       <div style={{ padding: 24, color: '#b00020', fontFamily: 'sans-serif' }}>
@@ -141,6 +180,14 @@ export default function Scene3D({ onBuildingSelect, survol = 40 }) {
   const { center, radius } = bounds;
   const t = data.terrain;
 
+  const zAt = (x, y) =>
+    computeDisplayZ(x, y, { sampler: terrainSampler, fokotany, baseZ, survol });
+
+  const draftLinePoints =
+    draftPoints.length >= 2
+      ? draftPoints.map(([x, y]) => new THREE.Vector3(x, y, zAt(x, y) + 1.5))
+      : null;
+
   return (
     <Canvas
       shadows
@@ -162,18 +209,18 @@ export default function Scene3D({ onBuildingSelect, survol = 40 }) {
       {/* HAUT : le fokotany (relief) enlevé et monté en haut */}
       <Terrain data={t} offsetZ={survol} />
 
-      {/* Bâtiments : dans le fokotany -> en haut ; hors -> en bas */}
+      {/* Bâtiments par défaut : dans le fokotany -> en haut ; hors -> en bas */}
       <Buildings
         buildingsData={data.buildings}
         terrain={t}
         fokotany={fokotany}
         baseZ={baseZ}
         survol={survol}
-        onSelect={handleSelect}
+        onSelect={mode === 'view' ? handleSelect : undefined}
         selectedId={selectedId}
       />
 
-      {/* Routes : dans le fokotany -> haut (sur relief survolé) ; sinon bas */}
+      {/* Routes par défaut : dans le fokotany -> haut ; sinon bas */}
       <NetworkLines
         lines={data.highways.lines}
         sampler={terrainSampler}
@@ -185,7 +232,7 @@ export default function Scene3D({ onBuildingSelect, survol = 40 }) {
         offsetZ={1.5}
       />
 
-      {/* Cours d'eau : idem */}
+      {/* Cours d'eau par défaut : idem */}
       <NetworkLines
         lines={data.waterways.lines}
         sampler={terrainSampler}
@@ -197,10 +244,43 @@ export default function Scene3D({ onBuildingSelect, survol = 40 }) {
         offsetZ={1.5}
       />
 
+      {/* Éléments personnalisés (couleurs distinctes) */}
+      <CustomElements
+        elements={customElements}
+        sampler={terrainSampler}
+        fokotany={fokotany}
+        baseZ={baseZ}
+        survol={survol}
+        selectedId={selectedCustomId}
+        onSelect={mode === 'view' ? onSelectCustom : undefined}
+      />
+
+      {/* Aperçu du tracé en cours de saisie (route/eau, avant validation) */}
+      {draftLinePoints && (
+        <Line points={draftLinePoints} color={COLORS.draft} lineWidth={3} dashed dashScale={4} />
+      )}
+
+      {/* Plan de clic invisible : actif uniquement en mode ajout */}
+      <PointerGroundPlane bounds={bounds} active={ADD_MODES.includes(mode)} onPick={onPick} />
+
+      {/* Poignées de tracé en mode édition de géométrie (courbe) */}
+      {mode === 'edit-geometry' && editingGeometry && (
+        <GeometryEditor
+          points={editingGeometry}
+          z={zAt}
+          bounds={bounds}
+          onChange={onGeometryChange}
+          selectedIndex={editingSelectedPointIndex}
+          onSelectPoint={onEditingSelectPoint}
+          onDraggingChange={handleDraggingChange}
+        />
+      )}
+
       <CameraController target={center} radius={radius} />
 
       <OrbitControls
         makeDefault
+        enabled={controlsEnabled}
         enableDamping
         dampingFactor={0.08}
         minDistance={5}

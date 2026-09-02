@@ -22,6 +22,7 @@ app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
 
+app.use('/api', dynamicElementsRoutes);
 app.get('/api/protected', authenticateToken, (req, res) => {
   res.json({ message: 'Route protegee accessible', user: req.user });
 });

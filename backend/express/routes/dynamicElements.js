@@ -1,16 +1,24 @@
 // routes/dynamicElements.js
-//
-// API CRUD pour les éléments dynamiques placés sur la maquette 3D
-// (cours d'eau, routes, bâtiments) et enregistrés dans la base SQLite.
-// Ces éléments sont ajoutés par l'utilisateur directement sur la scène 3D
-// et réaffichés selon leur emplacement (dans / hors fokotany).
-
 import { Router } from 'express';
 import { getDb } from '../database.js';
 
 const router = Router();
 
-const VALID_TYPES = ['eau', 'route', 'batiment'];
+const VALID_TYPES = ['water', 'highway', 'building', 'eau', 'route', 'batiment'];
+
+// Traduction anglais -> français (pour l'insertion)
+const TYPE_MAP_TO_FRENCH = {
+    'water': 'eau',
+    'highway': 'route',
+    'building': 'batiment'
+};
+
+// Traduction français -> anglais (pour l'affichage)
+const TYPE_MAP_TO_ENGLISH = {
+    'eau': 'water',
+    'route': 'highway',
+    'batiment': 'building'
+};
 
 function parsePath(path) {
   try {
@@ -32,7 +40,7 @@ router.get('/elements', (req, res) => {
       elements: rows.map((r) => ({
         id: r.id,
         name: r.name,
-        type: r.type,
+        type: TYPE_MAP_TO_ENGLISH[r.type] || r.type, // Traduction en anglais
         height: r.height,
         distance: r.distance,
         path: parsePath(r.path),
@@ -49,10 +57,9 @@ router.get('/elements', (req, res) => {
 });
 
 // Crée un élément dynamique
-// body : { name, type, height?, distance?, path?, in_fokotany }
 router.post('/elements', (req, res) => {
   try {
-    const { name, type, height = null, distance = null, path = [], in_fokotany = false } = req.body;
+    const { name, type, height = null, distance = null, path, geometry, in_fokotany = false } = req.body;
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Le nom de l\'élément est requis' });
@@ -60,15 +67,21 @@ router.post('/elements', (req, res) => {
     if (!VALID_TYPES.includes(type)) {
       return res.status(400).json({ error: `type doit être ${VALID_TYPES.join(', ')}` });
     }
+    
+    // Traduction anglais -> français pour la base de données
+    let dbType = TYPE_MAP_TO_FRENCH[type] || type;
 
-    const coords = Array.isArray(path) ? path : [];
+    // Récupère les points depuis 'path' ou 'geometry' indifféremment
+    const rawCoords = Array.isArray(path) && path.length > 0 ? path : geometry;
+    const coords = Array.isArray(rawCoords) ? rawCoords : [];
+    
     if (coords.length === 0) {
       return res.status(400).json({ error: 'L\'élément doit avoir au moins un point d\'emplacement' });
     }
 
     const first = coords[0];
-    const x = typeof first[0] === 'number' ? first[0] : 0;
-    const y = typeof first[1] === 'number' ? first[1] : 0;
+    const x = typeof first?.[0] === 'number' ? first[0] : 0;
+    const y = typeof first?.[1] === 'number' ? first[1] : 0;
 
     const db = getDb();
     const result = db.prepare(
@@ -77,7 +90,7 @@ router.post('/elements', (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       String(name).trim(),
-      type,
+      dbType,  // Type en français pour la base
       height != null ? Number(height) : null,
       distance != null ? Number(distance) : null,
       JSON.stringify(coords),
@@ -87,12 +100,14 @@ router.post('/elements', (req, res) => {
     );
 
     const element = db.prepare('SELECT * FROM dynamic_elements WHERE id = ?').get(result.lastInsertRowid);
+    
+    // ⚠️ CORRECTION : Retourner le type en anglais pour le frontend
     res.status(201).json({
       message: 'Élément créé avec succès',
       element: {
         id: element.id,
         name: element.name,
-        type: element.type,
+        type: TYPE_MAP_TO_ENGLISH[element.type] || element.type, // Traduction en anglais
         height: element.height,
         distance: element.distance,
         path: parsePath(element.path),
