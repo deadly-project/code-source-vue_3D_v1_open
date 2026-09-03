@@ -7,7 +7,7 @@ import authRoutes from './routes/auth.js';
 import dynamicElementsRoutes from './routes/dynamicElements.js';
 import { authenticateToken } from './middleware/auth.js';
 import { requireRole } from './middleware/roles.js';
-
+import usersRoutes from "./routes/users.js"
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -21,7 +21,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
-
+app.use('/api/admin/users', usersRoutes);
 app.use('/api', dynamicElementsRoutes);
 app.get('/api/protected', authenticateToken, (req, res) => {
   res.json({ message: 'Route protegee accessible', user: req.user });

@@ -42,15 +42,17 @@ const panelStyle = {
   width: 300,
   maxHeight: 'calc(100% - 32px)',
   overflow: 'auto',
-  background: 'rgba(20, 20, 24, 0.92)',
+  background: 'rgba(20, 20, 24, 0.95)',
   color: '#fff',
-  padding: '14px 16px',
-  borderRadius: 10,
+  padding: '16px 18px',
+  borderRadius: 12,
   fontSize: 13,
   lineHeight: 1.5,
-  boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  border: '1px solid rgba(255,255,255,0.08)',
   zIndex: 10,
   fontFamily: 'system-ui, sans-serif',
+  backdropFilter: 'blur(8px)',
 };
 
 const panelHeaderStyle = {
@@ -58,33 +60,36 @@ const panelHeaderStyle = {
   justifyContent: 'space-between',
   alignItems: 'center',
   fontWeight: 600,
-  marginBottom: 6,
+  marginBottom: 10,
 };
 
 const closeBtnStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  width: 24,
-  height: 24,
-  background: 'rgba(255,255,255,0.12)',
-  border: 'none',
+  width: 26,
+  height: 26,
+  background: 'rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.1)',
   color: '#fff',
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: 'pointer',
   fontSize: 16,
   lineHeight: '20px',
+  transition: 'all 0.2s ease',
 };
 
 const smallBtnStyle = {
-  padding: '6px 10px',
-  borderRadius: 6,
-  border: '1px solid rgba(255,255,255,0.28)',
-  background: 'rgba(255,255,255,0.08)',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid rgba(255,255,255,0.15)',
+  background: 'rgba(255,255,255,0.06)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: 12,
+  fontSize: 12.5,
+  fontWeight: '500',
   whiteSpace: 'nowrap',
+  transition: 'all 0.2s ease',
 };
 
 export default function Map3DViewer() {
@@ -95,12 +100,15 @@ export default function Map3DViewer() {
   const [customElements, setCustomElements] = useState([]);
   const [elementsError, setElementsError] = useState(null);
 
+  // --- États pour les notifications et modales modernes ---
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     listElements()
       .then((res) => {
         if (!cancelled) {
-          // Extraction sécurisée du tableau qu'il s'agisse d'un tableau direct ou d'un objet { elements: [...] }
           const data = Array.isArray(res) ? res : (res?.elements || []);
           setCustomElements(data);
         }
@@ -110,12 +118,11 @@ export default function Map3DViewer() {
   }, []);
 
   // --- Mode d'interaction ---
-  // 'view' | 'building' | 'water' | 'highway' | 'edit-geometry'
   const [mode, setMode] = useState('view');
   const [draftPoints, setDraftPoints] = useState([]);
 
   // --- Formulaire de création ---
-  const [pendingPayload, setPendingPayload] = useState(null); // { type, center? , geometry? }
+  const [pendingPayload, setPendingPayload] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -129,8 +136,6 @@ export default function Map3DViewer() {
     ? customElements.find((e) => e.id === selectedCustomId) || null 
     : null;
 
-  // --- Sélection bâtiment par défaut (comportement existant, adapté pour
-  //     désélectionner un éventuel élément personnalisé en parallèle) ---
   const handleDefaultBuildingSelect = useCallback((b) => {
     setSelectedCustomId(null);
     setSelectedBuilding(b);
@@ -141,7 +146,6 @@ export default function Map3DViewer() {
     setSelectedCustomId(id);
   }, []);
 
-  // --- Démarrage / annulation d'un placement ---
   const startAddMode = (type) => {
     setSelectedBuilding(null);
     setSelectedCustomId(null);
@@ -156,9 +160,7 @@ export default function Map3DViewer() {
 
   const undoLastPoint = () => setDraftPoints((pts) => pts.slice(0, -1));
 
-  // --- Réception d'un clic de placement depuis Scene3D ---
   const handlePick = ({ x, y }) => {
-
     console.log('📍 Point cliqué - coordonnées brutes:', { x, y });
 
     if (mode === 'building') {
@@ -183,7 +185,6 @@ export default function Map3DViewer() {
     setFormError(null);
   };
 
-  // --- Soumission du formulaire -> création en base ---
   const handleFormSubmit = async ({ name, height, largeur, profondeur, width }) => {
     setSubmitting(true);
     setFormError(null);
@@ -191,14 +192,7 @@ export default function Map3DViewer() {
       let payload;
       if (pendingPayload.type === 'building') {
         const [cx, cy] = pendingPayload.center;
-            
-        const geometry = rectRing(
-          cx,
-          cy,
-          Number(largeur) || 8,
-          Number(profondeur) || 8
-        );
-      
+        const geometry = rectRing(cx, cy, Number(largeur) || 8, Number(profondeur) || 8);
         payload = {
           type: 'building',
           name,
@@ -207,21 +201,26 @@ export default function Map3DViewer() {
           x: cx,
           y: cy,
         };
-      }else {
+      } else {
         payload = {
           type: pendingPayload.type,
           name,
-          path: pendingPayload.geometry, // Correspond à la propriété attendue par le backend (path)
+          path: pendingPayload.geometry,
           width: Number(width) || 2,
         };
       }
       const res = await createElement(payload);
-      const created = res.element || res; // S'adapte si l'API renvoie { element: {...} } ou l'objet direct
+      const created = res.element || res;
       setCustomElements((els) => [...els, created]);
       setShowForm(false);
       setPendingPayload(null);
       setDraftPoints([]);
       setMode('view');
+
+      // Déclenchement de l'alerte moderne de succès
+      setSuccessMessage(`Élément "${name}" ajouté avec succès !`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -229,23 +228,30 @@ export default function Map3DViewer() {
     }
   };
 
-  // --- Suppression ---
-  const deleteSelected = async () => {
+  // --- Suppression avec module de confirmation moderne ---
+  const confirmDelete = () => {
     if (!selectedElement) return;
-    if (!window.confirm(`Supprimer "${selectedElement.name}" ?`)) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const executeDelete = async () => {
+    if (!selectedElement) return;
     try {
       await deleteElement(selectedElement.id);
       setCustomElements((els) => els.filter((e) => e.id !== selectedElement.id));
       setSelectedCustomId(null);
+      setShowDeleteConfirm(false);
+      
+      setSuccessMessage('Élément supprimé avec succès.');
+      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err) {
       setElementsError(err.message);
+      setShowDeleteConfirm(false);
     }
   };
 
-  // --- Édition de tracé (courbe) ---
   const startGeometryEdit = () => {
     if (!selectedElement || selectedElement.type === 'building') return;
-    // Utilise 'path' ou 'geometry' selon la structure stockée
     const targetPath = selectedElement.path || selectedElement.geometry || [];
     setEditingGeometry(targetPath.map((p) => [...p]));
     setEditingSelectedPointIndex(null);
@@ -263,8 +269,6 @@ export default function Map3DViewer() {
       if (!pts || pts.length < 2) return pts;
       const [lx, ly] = pts[pts.length - 1];
       const [px, py] = pts[pts.length - 2];
-      // Nouveau point prolongeant légèrement le dernier segment ; à
-      // glisser ensuite à l'endroit voulu avec la poignée.
       return [...pts, [lx + (lx - px) * 0.3, ly + (ly - py) * 0.3]];
     });
   };
@@ -280,7 +284,6 @@ export default function Map3DViewer() {
   const saveGeometryEdit = async () => {
     if (!selectedElement || !editingGeometry) return;
     try {
-      // On envoie 'path' pour correspondre au backend SQLite qui gère cette colonne
       const res = await updateElement(selectedElement.id, { 
         name: selectedElement.name,
         type: selectedElement.type,
@@ -294,6 +297,9 @@ export default function Map3DViewer() {
       setEditingGeometry(null);
       setEditingSelectedPointIndex(null);
       setMode('view');
+
+      setSuccessMessage('Tracé mis à jour avec succès !');
+      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err) {
       setElementsError(err.message);
     }
@@ -324,7 +330,7 @@ export default function Map3DViewer() {
         onEditingSelectPoint={setEditingSelectedPointIndex}
       />
 
-      {/* Barre d'outils d'ajout (masquée pendant l'édition de tracé) */}
+      {/* Barre d'outils d'ajout */}
       {mode !== 'edit-geometry' && (
         <Toolbar
           mode={mode}
@@ -341,25 +347,26 @@ export default function Map3DViewer() {
         <div
           style={{
             position: 'absolute',
-            bottom: 16,
+            bottom: 24,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20,
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
-            gap: 8,
-            background: 'rgba(18, 18, 22, 0.9)',
+            gap: 10,
+            background: 'rgba(18, 18, 22, 0.92)',
             color: '#fff',
-            padding: '8px 10px',
-            borderRadius: 10,
-            fontSize: 12.5,
+            padding: '10px 16px',
+            borderRadius: 12,
+            fontSize: 13,
             fontFamily: 'system-ui, sans-serif',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
-            backdropFilter: 'blur(4px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            backdropFilter: 'blur(8px)',
           }}
         >
-          <span>Glissez les points pour courber le tracé</span>
+          <span style={{ fontWeight: 500, marginRight: 4 }}>Glissez les points pour courber le tracé</span>
           <button style={smallBtnStyle} onClick={addPointToEditingLine}>+ Point</button>
           <button
             style={smallBtnStyle}
@@ -369,16 +376,16 @@ export default function Map3DViewer() {
             Supprimer le point
           </button>
           <button
-            style={{ ...smallBtnStyle, background: '#7c4dff', borderColor: '#7c4dff' }}
+            style={{ ...smallBtnStyle, background: '#3b82f6', borderColor: '#3b82f6', color: '#fff', fontWeight: 'bold' }}
             onClick={saveGeometryEdit}
           >
             Enregistrer
           </button>
-          <button style={smallBtnStyle} onClick={cancelGeometryEdit}>Annuler</button>
+          <button style={{ ...smallBtnStyle, background: 'rgba(255,255,255,0.04)' }} onClick={cancelGeometryEdit}>Annuler</button>
         </div>
       )}
 
-      {/* Contrôle du survol (dynamique, 0 m -> infini) */}
+      {/* Contrôle du survol */}
       <div
         style={{
           position: 'absolute',
@@ -387,18 +394,19 @@ export default function Map3DViewer() {
           zIndex: 20,
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          background: 'rgba(18, 18, 22, 0.9)',
+          gap: 10,
+          background: 'rgba(18, 18, 22, 0.92)',
           color: '#fff',
-          padding: '8px 12px',
-          borderRadius: 10,
-          fontSize: 12.5,
+          padding: '10px 14px',
+          borderRadius: 12,
+          fontSize: 13,
           fontFamily: 'system-ui, sans-serif',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
-          backdropFilter: 'blur(4px)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(8px)',
         }}
       >
-        <label htmlFor="survol-input" style={{ opacity: 0.9, whiteSpace: 'nowrap' }}>
+        <label htmlFor="survol-input" style={{ opacity: 0.9, whiteSpace: 'nowrap', fontWeight: 500 }}>
           Survol :
         </label>
         <input
@@ -413,12 +421,13 @@ export default function Map3DViewer() {
           }}
           style={{
             width: 72,
-            padding: '4px 6px',
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.25)',
+            padding: '6px 8px',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.15)',
             color: '#fff',
-            borderRadius: 6,
-            fontSize: 12.5,
+            borderRadius: 8,
+            fontSize: 13,
+            outline: 'none',
           }}
         />
         <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>m</span>
@@ -428,48 +437,49 @@ export default function Map3DViewer() {
       <div
         style={{
           position: 'absolute',
-          top: mode === 'view' ? 64 : 116,
+          top: mode === 'view' ? 76 : 128,
           left: 16,
-          minWidth: 190,
-          background: 'rgba(18, 18, 22, 0.9)',
+          minWidth: 200,
+          background: 'rgba(18, 18, 22, 0.92)',
           color: '#fff',
-          padding: '12px 14px',
-          borderRadius: 10,
-          fontSize: 12.5,
+          padding: '14px 16px',
+          borderRadius: 12,
+          fontSize: 13,
           lineHeight: 1.4,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          border: '1px solid rgba(255,255,255,0.08)',
           zIndex: 10,
           fontFamily: 'system-ui, sans-serif',
-          backdropFilter: 'blur(4px)',
+          backdropFilter: 'blur(8px)',
         }}
       >
-        <div style={{ fontWeight: 600, marginBottom: 8, letterSpacing: 0.4, opacity: 0.9 }}>
+        <div style={{ fontWeight: 600, marginBottom: 10, letterSpacing: 0.4, opacity: 0.9 }}>
           Légende
         </div>
         {LEGEND_ITEMS.map((item) => (
           <div
             key={item.label}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, whiteSpace: 'nowrap' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, whiteSpace: 'nowrap' }}
           >
             <span
               style={{
                 width: 14,
                 height: 14,
                 flexShrink: 0,
-                borderRadius: 3,
+                borderRadius: 4,
                 background: item.color,
                 boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)',
               }}
             />
             <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <span>{item.label}</span>
-              <span style={{ opacity: 0.6, fontSize: 11 }}>{item.hint}</span>
+              <span style={{ fontWeight: 500 }}>{item.label}</span>
+              <span style={{ opacity: 0.5, fontSize: 11 }}>{item.hint}</span>
             </span>
           </div>
         ))}
       </div>
 
-      {/* Panneau du bâtiment par défaut sélectionné (comportement existant) */}
+      {/* Panneau du bâtiment par défaut sélectionné */}
       {selectedBuilding && (
         <div style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -481,18 +491,18 @@ export default function Map3DViewer() {
 
           {selectedBuilding.attrs && (
             <>
-              <div style={{ opacity: 0.85, marginBottom: 4 }}>
+              <div style={{ opacity: 0.9, marginBottom: 6, fontWeight: 500 }}>
                 {selectedBuilding.attrs.name || selectedBuilding.attrs.osm_id || 'Bâtiment sans nom'}
               </div>
               {selectedBuilding.height != null && (
-                <div style={{ opacity: 0.7, marginBottom: 8 }}>
+                <div style={{ opacity: 0.7, marginBottom: 10 }}>
                   Hauteur : {selectedBuilding.height.toFixed(1)} m
                 </div>
               )}
             </>
           )}
 
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: 8, fontSize: '12px' }}>
             {JSON.stringify(selectedBuilding.attrs ?? selectedBuilding.properties, null, 2)}
           </pre>
         </div>
@@ -514,30 +524,127 @@ export default function Map3DViewer() {
             </button>
           </div>
 
-          <div style={{ opacity: 0.85, marginBottom: 4 }}>{selectedElement.name}</div>
+          <div style={{ opacity: 0.95, marginBottom: 6, fontWeight: 600, fontSize: '14px' }}>{selectedElement.name}</div>
 
           {selectedElement.type === 'building' ? (
-            <div style={{ opacity: 0.7, marginBottom: 4 }}>Hauteur : {selectedElement.height} m</div>
+            <div style={{ opacity: 0.7, marginBottom: 6 }}>Hauteur : {selectedElement.height} m</div>
           ) : (
-            <div style={{ opacity: 0.7, marginBottom: 4 }}>Largeur : {selectedElement.width} m</div>
+            <div style={{ opacity: 0.7, marginBottom: 6 }}>Largeur : {selectedElement.width} m</div>
           )}
 
-          <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 12 }}>
+          <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 16 }}>
             Créé le {new Date(selectedElement.created_at || selectedElement.createdAt).toLocaleString('fr-FR')}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {selectedElement.type !== 'building' && (
               <button style={smallBtnStyle} onClick={startGeometryEdit}>
                 Modifier le tracé
               </button>
             )}
             <button
-              style={{ ...smallBtnStyle, borderColor: '#ff6d6d', color: '#ff6d6d' }}
-              onClick={deleteSelected}
+              style={{ ...smallBtnStyle, background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#fca5a5' }}
+              onClick={confirmDelete}
             >
               Supprimer
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Alerte moderne de succès (Toast flottant) */}
+      {successMessage && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 24,
+            right: 24,
+            zIndex: 50,
+            background: 'rgba(16, 185, 129, 0.95)',
+            color: '#fff',
+            padding: '12px 20px',
+            borderRadius: 10,
+            fontSize: 13.5,
+            fontWeight: 500,
+            fontFamily: 'system-ui, sans-serif',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            backdropFilter: 'blur(6px)',
+            animation: 'fadeIn 0.3s ease-out',
+          }}
+        >
+          <span>✅</span> {successMessage}
+        </div>
+      )}
+
+      {/* Modale de confirmation de suppression moderne */}
+      {showDeleteConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <div
+            style={{
+              background: '#181b22',
+              border: '1px solid rgba(255,255,255,0.1)',
+              padding: '24px',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '380px',
+              color: '#fff',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+              fontFamily: 'system-ui, sans-serif',
+            }}
+          >
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', fontWeight: 600 }}>Confirmer la suppression</h3>
+            <p style={{ opacity: 0.7, fontSize: '13.5px', marginBottom: '20px', lineHeight: 1.5 }}>
+              Êtes-vous sûr de vouloir supprimer l'élément <strong style={{ color: '#fff' }}>"{selectedElement?.name}"</strong> ? Cette action est irréversible.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={executeDelete}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                }}
+              >
+                Supprimer
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -546,16 +653,17 @@ export default function Map3DViewer() {
         <div
           style={{
             position: 'absolute',
-            bottom: 16,
-            left: 16,
-            zIndex: 20,
-            background: 'rgba(176,0,32,0.9)',
+            bottom: 24,
+            left: 24,
+            zIndex: 30,
+            background: 'rgba(239, 68, 68, 0.95)',
             color: '#fff',
-            padding: '8px 12px',
-            borderRadius: 8,
-            fontSize: 12.5,
+            padding: '12px 16px',
+            borderRadius: 10,
+            fontSize: 13,
             fontFamily: 'system-ui, sans-serif',
-            maxWidth: 320,
+            maxWidth: 340,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
           }}
         >
           {elementsError}

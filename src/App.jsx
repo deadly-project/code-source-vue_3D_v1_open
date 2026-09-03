@@ -1,3 +1,4 @@
+// src/App.jsx
 import {
   BrowserRouter,
   Routes,
@@ -10,6 +11,9 @@ import RegisterPage from './authentification/RegisterPage.jsx';
 import ProtectedRoute from './authentification/ProtectedRoute.jsx';
 
 import Map3DViewer from './components/Map3DViewer.jsx';
+import PartnerDashboard from './components/PartnerDashboard.jsx';
+import AdminDashboard from './components/AdminDashboard.jsx';
+import Navbar from './components/Navbar.jsx';
 
 function UnauthorizedPage() {
   return (
@@ -26,97 +30,76 @@ function UnauthorizedPage() {
     >
       <div style={{ textAlign: 'center' }}>
         <h1>Accès interdit</h1>
+        <p>Vous n'avez pas les permissions nécessaires pour accéder à cette page.</p>
+      </div>
+    </div>
+  );
+}
 
-        <p>
-          Vous n'avez pas les permissions
-          nécessaires pour accéder à cette page.
-        </p>
+// Composant de disposition (Layout) qui gère l'espace de la sidebar
+function MainLayout({ children }) {
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#111318' }}>
+      {/* Sidebar fixe à gauche */}
+      <Navbar />
+      
+      {/* Contenu principal décalé vers la droite de 260px pour ne pas être écrasé */}
+      <div style={{ marginLeft: '260px', flex: 1, width: 'calc(100% - 260px)' }}>
+        {children}
       </div>
     </div>
   );
 }
 
 function App() {
-
   return (
     <BrowserRouter>
-
       <AuthProvider>
-
         <Routes>
+          {/* Routes Publiques (Sans sidebar) */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
 
-          {/* =========================
-              AUTHENTIFICATION
-          ========================= */}
-
-          <Route
-            path="/login"
-            element={<LoginPage />}
-          />
-
-          <Route
-            path="/register"
-            element={<RegisterPage />}
-          />
-
-
-          {/* =========================
-              APPLICATION PROTÉGÉE
-          ========================= */}
-
+          {/* Routes Protégées (Avec la sidebar et le décalage) */}
           <Route
             path="/map"
             element={
-              <ProtectedRoute>
-                <Map3DViewer />
+              <ProtectedRoute allowedRoles={['citoyen', 'partenaire', 'administrateur']}>
+                <MainLayout>
+                  <Map3DViewer />
+                </MainLayout>
               </ProtectedRoute>
             }
           />
 
-
-          {/* =========================
-              ACCÈS INTERDIT
-          ========================= */}
-
           <Route
-            path="/unauthorized"
-            element={<UnauthorizedPage />}
-          />
-
-
-          {/* =========================
-              ROUTE PAR DÉFAUT
-          ========================= */}
-
-          <Route
-            path="/"
+            path="/partner/dashboard"
             element={
-              <Navigate
-                to="/login"
-                replace
-              />
+              <ProtectedRoute allowedRoles={['partenaire', 'administrateur']}>
+                <MainLayout>
+                  <PartnerDashboard />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
 
-
-          {/* =========================
-              ROUTE INEXISTANTE
-          ========================= */}
-
           <Route
-            path="*"
+            path="/admin/dashboard"
             element={
-              <Navigate
-                to="/"
-                replace
-              />
+              <ProtectedRoute allowedRoles={['administrateur']}>
+                <MainLayout>
+                  <AdminDashboard />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
 
+          {/* Page d'accès non autorisé (protégée ou avec layout optionnel) */}
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-
       </AuthProvider>
-
     </BrowserRouter>
   );
 }

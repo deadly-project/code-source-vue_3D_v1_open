@@ -1,3 +1,4 @@
+// src/authentification/LoginPage.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
@@ -19,10 +20,17 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      // La fonction login retourne les données de l'utilisateur (userData)
+      const user = await login(email, password);
 
-      // Connexion réussie
-      navigate('/map', { replace: true });
+      // Redirection dynamique selon le rôle de l'utilisateur
+      if (user?.role === 'administrateur') {
+        navigate('/admin/dashboard', { replace: true });
+      } else if (user?.role === 'partenaire') {
+        navigate('/partner/dashboard', { replace: true });
+      } else {
+        navigate('/map', { replace: true });
+      }
 
     } catch (err) {
       const msg =
@@ -38,7 +46,6 @@ export default function LoginPage() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-
         <div className="auth-header">
           <h1 className="auth-title">Opencode</h1>
           <p className="auth-subtitle">
@@ -47,7 +54,6 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-
           {error && (
             <div className="auth-error">
               {error}
@@ -55,10 +61,7 @@ export default function LoginPage() {
           )}
 
           <div className="form-group">
-            <label htmlFor="email">
-              Email
-            </label>
-
+            <label htmlFor="email">Email</label>
             <input
               id="email"
               type="email"
@@ -71,10 +74,7 @@ export default function LoginPage() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">
-              Mot de passe
-            </label>
-
+            <label htmlFor="password">Mot de passe</label>
             <input
               id="password"
               type="password"
@@ -91,17 +91,13 @@ export default function LoginPage() {
             className="auth-btn"
             disabled={loading}
           >
-            {loading
-              ? 'Connexion...'
-              : 'Se connecter'}
+            {loading ? 'Connexion...' : 'Se connecter'}
           </button>
-
         </form>
 
         <div className="auth-footer">
           <p>
             Pas encore de compte ?{' '}
-
             <button
               type="button"
               className="auth-link"
@@ -111,7 +107,6 @@ export default function LoginPage() {
             </button>
           </p>
         </div>
-
       </div>
     </div>
   );
