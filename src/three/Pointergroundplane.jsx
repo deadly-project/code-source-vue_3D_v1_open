@@ -42,7 +42,7 @@ export default function PointerGroundPlane({ bounds, active, onPick, onMove, onU
 
   return (
     <mesh
-      position={[cx, cy, box.min.z - 500]}
+      position={[cx, cy, (box.min.z + box.max.z) /2 ]}
       visible={false}
       onClick={(e) => {
   e.stopPropagation();
